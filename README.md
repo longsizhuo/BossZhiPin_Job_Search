@@ -1,13 +1,3 @@
-作者已经去打工了，现在在sider做产品经理，义务为我们的产品打一下广告，各位见谅
-[![banner](https://github.com/Frrrrrrrrank/auto_job__find__chatgpt__rpa/assets/82270228/0fff88f5-670c-4126-b6aa-3df1763fe757)](https://sider.ai/ad-land-redirect?source=github&p1=mi&p2=kk)
-
-欢迎大家使用
-
-## 更加便于操作的付费版本
-
-您可以在微软商店中下载sider windows客户端，找到求职大师功能，每天可以免费使用三十次（目前已经推出）；同时也将加入linkedin和Boss职位筛选功能（最晚在十月底前推出）；
-
-
 ## 正文
 这是一个完全免费的脚本，只需要你们自己配置好openai的api即可
 
