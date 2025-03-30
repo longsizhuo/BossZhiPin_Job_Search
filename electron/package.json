@@ -1,0 +1,27 @@
+{
+  "name": "boss-zhipin-job-search",
+  "version": "1.0.0",
+  "description": "Boss直聘自动投递助手",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^35.1.2",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.13.2",
+    "@grpc/proto-loader": "^0.7.13"
+  },
+  "build": {
+    "appId": "com.boss.zhipin.job.search",
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
