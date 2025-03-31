@@ -36,8 +36,7 @@ Goal: Make the tool usable for non-technical users.
 - 💡 可能采用 Streamlit、Gradio 或 Flask 构建界面。
 
 📸 当前界面截图：
->（请替换成真实的截图路径）
-![UI Screenshot](https://github.com/longsizhuo/BossZhiPin_Job_Search/blob/dev/ui_screenshot.png)
+<img width="590" alt="0b929fc5f54bbf149bc74c93d682e76" src="https://github.com/user-attachments/assets/ba0658a7-4c0d-4651-8bef-2764ca1a34ea" />
 
 
 ### 2️⃣ 功能增强路线（main 分支）| Feature Enhancements (`main` branch)
