@@ -10,9 +10,28 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
 
-# Init OpenAI Client
-client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+class OpenAIClient:
+    _instance = None
+    
+    def __init__(self):
+        self.client = None
+    
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
+    def initialize(self, api_key, base_url=None):
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
+    
+    def get_client(self):
+        if self.client is None:
+            raise ValueError("OpenAI client not initialized. Please set API key first.")
+        return self.client
 
+# 使用单例模式
+openai_client = OpenAIClient.get_instance()
 
 # Create or load assistant
 def create_assistant(client):

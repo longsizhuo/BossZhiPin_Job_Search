@@ -8,7 +8,6 @@ from openai import OpenAI
 from selenium.webdriver import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
-from langchain_functions import get_text_chunks, get_vectorstore, read_resumes, should_use_langchain, generate_letter
 
 import functions
 import finding_jobs
@@ -29,13 +28,26 @@ if current_version < required_version:
 else:
     print("OpenAI version is compatible.")
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+class OpenAIClientManager:
+    _instance = None
+    _client = None
 
-if not should_use_langchain():
-    # Create or load assistant
-    assistant_id = functions.create_assistant(
-        client)  # this function comes from "functions.py"
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def initialize(self, api_key, base_url=None):
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
+
+    def get_client(self):
+        if self._client is None:
+            raise ValueError("OpenAI client not initialized. Please set API key first.")
+        return self._client
+
+# 全局单例
+openai_manager = OpenAIClientManager.get_instance()
 
 
 def create_thread(client):
@@ -51,7 +63,7 @@ def create_thread(client):
 
 def chat(user_input, assistant_id, thread_id=None):
     if thread_id is None:
-        thread_id = create_thread(client)
+        thread_id = create_thread(openai_manager.get_client())
         if thread_id is None:
             return json.dumps({"error": "Failed to create a new thread"})
 
@@ -60,21 +72,21 @@ def chat(user_input, assistant_id, thread_id=None):
     # Run the Assistant
     try:
         # Add the user's message to the thread
-        client.beta.threads.messages.create(
+        openai_manager.get_client().beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=user_input
         )
 
         # Start the Assistant Run
-        run = client.beta.threads.runs.create(
+        run = openai_manager.get_client().beta.threads.runs.create(
             thread_id=thread_id,
             assistant_id=assistant_id
         )
 
         # Check if the Run requires action (function call)
         while True:
-            run_status = client.beta.threads.runs.retrieve(
+            run_status = openai_manager.get_client().beta.threads.runs.retrieve(
                 thread_id=thread_id,
                 run_id=run.id,
                 timeout=60  # 设置超时时间为60秒
@@ -88,7 +100,7 @@ def chat(user_input, assistant_id, thread_id=None):
                 time.sleep(1)  # Wait for a second before checking again
 
         # Retrieve and return the latest message from the assistant
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        messages = openai_manager.get_client().beta.threads.messages.list(thread_id=thread_id)
         assistant_message = messages.data[0].content[0].text.value
 
         # 将换行符替换为一个空格
@@ -132,7 +144,9 @@ def send_response_and_go_back(driver, response):
     time.sleep(3)
 
 
-def send_job_descriptions_to_chat(url, browser_type, label, assistant_id=None, vectorstore=None):
+def send_job_descriptions_to_chat(url, browser_type, label):
+    # 这个函数会在用户点击"开始任务"后被调用
+    client = openai_manager.get_client()  # 获取已初始化的客户端
     # 开始浏览并获取工作描述
     finding_jobs.open_browser_with_options(url, browser_type)
     finding_jobs.log_in()
@@ -152,10 +166,7 @@ def send_job_descriptions_to_chat(url, browser_type, label, assistant_id=None, v
                 print(element)
                 if element == '立即沟通':
                     # 发送描述到聊天并打印响应
-                    if should_use_langchain():
-                        response = generate_letter(vectorstore, job_description)
-                    else:
-                        response = chat(job_description, assistant_id)
+                    response = chat(job_description, assistant_id)
                     print(response)
                     time.sleep(1)
                     # 点击沟通按钮
@@ -187,11 +198,5 @@ if __name__ == '__main__':
     url = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-recommend"
     browser_type = "chrome"
     label = "iOS（深圳）"  # 想要选择的下拉菜单项
-    if should_use_langchain():
-        text = read_resumes()
-        chunks = get_text_chunks(text)
-        vectorstore = get_vectorstore(chunks)
-        send_job_descriptions_to_chat(url, browser_type, label, vectorstore=vectorstore)
-    else:
-        assistant_id = functions.create_assistant(client)
-        send_job_descriptions_to_chat(url, browser_type, label, assistant_id=assistant_id)
+    assistant_id = functions.create_assistant(openai_manager.get_client())
+    send_job_descriptions_to_chat(url, browser_type, label, assistant_id=assistant_id)

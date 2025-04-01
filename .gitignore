@@ -40,4 +40,8 @@
 *.pyc
 .idea/
 .vs/
+/.venv
+
+# grpc
+
 

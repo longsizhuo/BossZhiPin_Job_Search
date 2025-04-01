@@ -1,0 +1,13 @@
+2025-03-31 00:57:14,083 - INFO - Resume directory: C:\Users\longs\AppData\Local\BossZhiPin\BossZhiPin_Job_Search\resume
+2025-03-31 00:57:14,083 - INFO - Created resume directory: C:\Users\longs\AppData\Local\BossZhiPin\BossZhiPin_Job_Search\resume
+2025-03-31 00:57:17,102 - INFO - Saving resume to: C:\Users\longs\AppData\Local\BossZhiPin\BossZhiPin_Job_Search\resume\
+2025-03-31 00:57:17,102 - INFO - File content length: 349907 bytes
+2025-03-31 00:57:17,103 - ERROR - Error saving resume: [Errno 2] No such file or directory: 'C:\\Users\\longs\\AppData\\Local\\BossZhiPin\\BossZhiPin_Job_Search\\resume\\'
+2025-03-31 00:59:58,384 - INFO - Resume directory: C:\Users\longs\AppData\Local\BossZhiPin\BossZhiPin_Job_Search\resume
+2025-03-31 00:59:58,386 - INFO - Created resume directory: C:\Users\longs\AppData\Local\BossZhiPin\BossZhiPin_Job_Search\resume
+2025-03-31 01:00:49,274 - INFO - Empty filename received, using default: resume_1743343249.pdf
+2025-03-31 01:00:49,274 - INFO - Saving resume to: C:\Users\longs\AppData\Local\BossZhiPin\BossZhiPin_Job_Search\resume\resume_1743343249.pdf
+2025-03-31 01:00:49,274 - INFO - File content length: 349907 bytes
+2025-03-31 01:00:49,276 - INFO - Resume saved successfully at: C:\Users\longs\AppData\Local\BossZhiPin\BossZhiPin_Job_Search\resume\resume_1743343249.pdf
+2025-03-31 01:00:49,276 - INFO - File exists with size: 349907 bytes
+2025-03-31 01:00:49,277 - INFO - Resume also saved to desktop: C:\Users\longs\Desktop\BossZhiPin_Resume_resume_1743343249.pdf

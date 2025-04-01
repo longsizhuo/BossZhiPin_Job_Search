@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package job_service;
+
+// 定义服务
+service JobService {
+  // 测试连接
+  rpc TestConnection (TestConnectionRequest) returns (TestConnectionResponse) {}
+  
+  // 文件上传
+  rpc UploadResume (UploadResumeRequest) returns (UploadResumeResponse) {}
+  
+  // 设置 API key
+  rpc SetApiKey (SetApiKeyRequest) returns (SetApiKeyResponse) {}
+  
+  // 开始任务
+  rpc StartJob (StartJobRequest) returns (stream JobStatus) {}
+  
+  // 停止任务
+  rpc StopJob (StopJobRequest) returns (StopJobResponse) {}
+}
+
+// 测试连接请求
+message TestConnectionRequest {}
+
+// 测试连接响应
+message TestConnectionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 文件上传请求
+message UploadResumeRequest {
+  bytes file_content = 1;
+  string file_name = 2;
+}
+
+// 文件上传响应
+message UploadResumeResponse {
+  bool success = 1;
+  string message = 2;
+  string file_path = 3;  // 保存的文件路径
+}
+
+// 设置 API key 请求
+message SetApiKeyRequest {
+  string api_key = 1;
+  string base_url = 2;  // 可选的 OpenAI base URL
+}
+
+// 设置 API key 响应
+message SetApiKeyResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 开始任务请求
+message StartJobRequest {
+  string job_type = 1;  // 例如："iOS（深圳）"
+  string browser_type = 2;  // 例如："chrome"
+  string url = 3;  // 目标网站 URL
+}
+
+// 任务状态（流式响应）
+message JobStatus {
+  string status = 1;  // "running", "completed", "error"
+  string message = 2;
+  int32 progress = 3;  // 0-100
+  string current_job = 4;  // 当前正在处理的工作描述
+  string current_response = 5;  // 当前生成的响应
+}
+
+// 停止任务请求
+message StopJobRequest {}
+
+// 停止任务响应
+message StopJobResponse {
+  bool success = 1;
+  string message = 2;
+  string final_status = 3;  // 任务停止时的最终状态
+} 
