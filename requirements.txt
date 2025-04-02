@@ -1,8 +1,12 @@
-langchain==0.0.354
-openai==1.66.3
-packaging==23.2
-python-dotenv==1.0.0
-selenium==4.16.0
-robotframework
-robotframework-seleniumlibrary
-robotframework-pythonlibcore
+langchain
+langchain-huggingface
+langchain-deepseek
+openai
+packaging
+python-dotenv
+selenium
+pypdf
+dotenv
+# robotframework
+# robotframework-seleniumlibrary
+# robotframework-pythonlibcore
