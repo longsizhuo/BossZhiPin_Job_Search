@@ -1,12 +1,10 @@
-import os
-
 from openai import OpenAI
 from packaging import version
 import openai
 
 from models.openai_assistant import create_assistant, OPENAI_API_KEY
 from vectorization import embed_pdf
-from write_response import send_job_descriptions_to_chat
+from website_oper.write_response import send_job_descriptions_to_chat
 
 if __name__ == '__main__':
     while True:
