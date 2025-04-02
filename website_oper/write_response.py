@@ -103,7 +103,7 @@ def send_response_and_go_back(driver, response):
     time.sleep(3)
 
 
-def send_job_descriptions_to_chat(url, browser_type, label, models, client_openAI = None, assistant_id=None, vectorstore=None):
+def send_job_descriptions_to_chat(url, browser_type, label, models:str, client_openAI = None, assistant_id=None, vectorstore=None):
     # 开始浏览并获取工作描述
     finding_jobs.open_browser_with_options(url, browser_type)
     finding_jobs.log_in()
@@ -126,7 +126,7 @@ def send_job_descriptions_to_chat(url, browser_type, label, models, client_openA
                     if models == "deepseek":
                         response = generate_letter(vectorstore, job_description)
                     else:
-                        response = chat(job_description, client_openAI, assistant_id)
+                        response = chat(user_input=job_description, client=client_openAI, assistant_id=assistant_id)
                     print(response)
                     time.sleep(1)
                     # 点击沟通按钮
