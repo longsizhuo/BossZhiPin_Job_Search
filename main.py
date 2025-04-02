@@ -38,7 +38,7 @@ if __name__ == '__main__':
         # It will come from frontend
         client_openAI = OpenAI(api_key=OPENAI_API_KEY)
         assistant_id = create_assistant(chatgpt_model ,client_openAI)
-        send_job_descriptions_to_chat(url, browser_type, label, "chatgpt", client_openAI, assistant_id=assistant_id)
+        send_job_descriptions_to_chat(url, browser_type, label, "chatgpt", client_openAI=client_openAI, assistant_id=assistant_id)
     elif model == "3":
         # 暂时弃用，以后开发
         pass
