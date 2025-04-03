@@ -17,11 +17,12 @@ if __name__ == '__main__':
     url = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-recommend"
     browser_type = "chrome"
     label = "后端开发（成都）"  # 想要选择的下拉菜单项
+    usr_name = "龙思卓"  # 用户名
 
     if model == "1":
         # DeepSeek
-        vectorstore = embed_pdf("./resume/my_cover.pdf", "./vectorstores")
-        send_job_descriptions_to_chat(url, browser_type, label, "deepseek", vectorstore=vectorstore)
+        vectorstore = embed_pdf("resume/my_cover_yc.pdf", "./vectorstores")
+        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "deepseek", vectorstore=vectorstore)
 
     elif model == "2":
         chatgpt_model = {1: "gpt-4o", 2: "gpt-4o-turbo"}[int(input("Which ChatGPT model do you want to use? (gpt-4o: 1, gpt-4o-turbo: 2): "))]
@@ -37,8 +38,8 @@ if __name__ == '__main__':
             print("OpenAI version is compatible.")
         # It will come from frontend
         client_openAI = OpenAI(api_key=OPENAI_API_KEY)
-        assistant_id = create_assistant(chatgpt_model ,client_openAI)
-        send_job_descriptions_to_chat(url, browser_type, label, "chatgpt", client_openAI=client_openAI, assistant_id=assistant_id)
+        assistant_id = create_assistant(usr_name, chatgpt_model ,client_openAI)
+        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "chatgpt", client_openAI=client_openAI, assistant_id=assistant_id)
     elif model == "3":
         # 暂时弃用，以后开发
         pass
