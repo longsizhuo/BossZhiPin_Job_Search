@@ -15,7 +15,7 @@ client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 
 # Create or load assistant
-def create_assistant(chatgpt_model, client):
+def create_assistant(usr_name, chatgpt_model, client):
     assistant_file_path = '../assistant.json'
 
     # If there is an assistant.json file already, then load that assistant
@@ -41,7 +41,7 @@ def create_assistant(chatgpt_model, client):
         )
         # New version of the assistant
         assistant = client.beta.assistants.create(
-            instructions=assistant_instructions,
+            instructions=assistant_instructions(usr_name),
             model=chatgpt_model,
             tools=[{"type": "file_search"}],
         )
