@@ -1,4 +1,21 @@
 ## 正文
+原作者已经暂停更新该项目，现在由我和小伙伴们维护该项目，力及让所有人都可以简单地运行。
+
+现在我们已经完成了：
+1. 加入更多的api，如deepseek，langchain等
+2. 优化了代码结构，使得代码更加易于理解
+3. 加入了更多的注释，方便大家理解代码
+4. 加入了更多的错误处理，使得代码更加稳定
+5. 加入了更多的功能，如chatgpt4及以上版本的支持
+
+我们将要完成的事情：
+1. 加入Electron，开发出前端界面
+2. 可以发送给BOSS附件
+
+我们寻求更多的小伙伴加入我们，如果你有兴趣，请联系我，我们一起完善这个项目。
+
+------------------下面是原作者的README---------------------
+
 这是一个完全免费的脚本，只需要你们自己配置好openai的api即可
 
 希望您能给我点个 **star**
@@ -14,6 +31,22 @@
 3. 将需要的包安装好
 4. 执行 write_response.py
 
+5. 请首先配置好openai的api，随后将pdf简历上传到文件夹resume里，命名为“my_cover".随后执行main.py即可
+会自动生成openai的assistant，并在本地产生一个.json文件，只有第一次运行的时候才会产生，后面每次运行如果检测到这个json，就会调用已有的assistant
+
+
+关于openai部分的包：
+openai
+
+About RPA
+tutorial video about how to learn rpa: https://www.youtube.com/watch?v=65OPFmEgCbM&list=PLx4LEkEdFArgrdD_lvXe_hYBy8zM0Sp3b&index=1
+Package of RPA
+selenium
+robotframework
+robotframework-seleniumlibrary
+robotframework-pythonlibcore
+
+Plugin: Intellibot@Selenium Library
 ## 关于 asistant
 
 会自动生成 openai 的 asistant，并在本地产生一个 .json 文件，只有第一次运行的时候才会产生，后面每次运行如果检测到这个 json ，就会调用已有的 asistant。
@@ -27,7 +60,7 @@
 - `robotframework-seleniumlibrary`
 - `robotframework-pythonlibcore`
 - `faiss-cpu不支持3.12（faiss-gpu不清楚）。建议大家用3.11及以下版本的python运行脚本。` from @[huanmit](https://github.com/huanmit)
-
+- 取消FAISS， 更新为`Chroma`
 ## About RPA
 
 tutorial video about how to learn [rpa](https://www.youtube.com/watch?v=65OPFmEgCbM&list=PLx4LEkEdFArgrdD_lvXe_hYBy8zM0Sp3b&index=1)
@@ -72,6 +105,8 @@ pip install --upgrade openai
 {"assistant_id": "asst_token"}
 ```
 
+-----
+### 以下是原作者的友链：
 
 ------------下面是其他朋友基于js构建的更加易于使用的代码---------------
 
