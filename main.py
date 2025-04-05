@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
     if model == "1":
         # DeepSeek
-        vectorstore = embed_pdf("resume/my_cover_yc.pdf", "./vectorstores")
+        vectorstore = embed_pdf("resume/my_cover.pdf", "./vectorstores")
         send_job_descriptions_to_chat(usr_name, url, browser_type, label, "deepseek", vectorstore=vectorstore)
 
     elif model == "2":

@@ -8,3 +8,5 @@ openai==1.70.0
 packaging==24.2
 python-dotenv==1.1.0
 selenium==4.30.0
+pypdf==5.4.0
+chromadb
