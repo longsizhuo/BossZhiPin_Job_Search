@@ -8,7 +8,10 @@ If this script brings you some warmth in this cold recruitment season, that alon
 Please don’t use this script to exploit others. If someone is already at the point of relying on scripts to apply for jobs, they probably don’t have much left to be squeezed.
 
 
-[中文](README_CN.md) [English](README.md)
+[中文文档](README_CN.md) 
+
+[English](README.md)
+
 ---
 
 ## Steps to Use
