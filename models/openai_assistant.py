@@ -2,7 +2,7 @@ import json
 import os
 
 from openai import OpenAI
-from prompts import assistant_instructions
+from models.prompts import assistant_instructions
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,8 +15,8 @@ client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 
 # Create or load assistant
-def create_assistant(client):
-    assistant_file_path = 'assistant.json'
+def create_assistant(usr_name, chatgpt_model, client):
+    assistant_file_path = '../assistant.json'
 
     # If there is an assistant.json file already, then load that assistant
     if os.path.exists(assistant_file_path):
@@ -32,20 +32,17 @@ def create_assistant(client):
         # file = client.files.create(file=open("resume/my_cover.pdf", "rb"),
         #                            purpose='assistants')
         vector_store = client.vector_stores.create(name="My Resume")
-        print(vector_store.id)
-        file_streams = [open("resume/my_cover.pdf", "rb")]
+        print(vector_store)
+        file_streams = [open("./resume/my_cover.pdf", "rb")]
         # Use the upload and poll SDK helper to upload the files, add them to the vector store,
         # and poll the status of the file batch for completion.
         file_batch = client.vector_stores.file_batches.upload_and_poll(
             vector_store_id=vector_store.id, files=file_streams
         )
-
-        print(file_batch.status)
-        print(file_batch.file_counts)
         # New version of the assistant
         assistant = client.beta.assistants.create(
-            instructions=assistant_instructions,
-            model="gpt-4o",
+            instructions=assistant_instructions(usr_name),
+            model=chatgpt_model,
             tools=[{"type": "file_search"}],
         )
 
