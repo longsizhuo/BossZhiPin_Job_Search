@@ -8,11 +8,20 @@ If this script brings you some warmth in this cold recruitment season, that alon
 Please don’t use this script to exploit others. If someone is already at the point of relying on scripts to apply for jobs, they probably don’t have much left to be squeezed.
 
 
+
 [中文文档](README_CN.md) 
 
 [English](README.md)
 
----
+Thanks to all the amazing people supporting my work!
+
+<p align="left">
+    <a href="https://github.com/longsizhuo/BossZhiPin_Job_Search/graphs/contributors">
+        <img width="770" src="https://contrib.rocks/image?repo=longsizhuo/BossZhiPin_Job_Search&max=300&columns=16" />
+    </a>
+</p>
+
+
 
 ## Steps to Use
 
