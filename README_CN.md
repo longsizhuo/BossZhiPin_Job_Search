@@ -99,6 +99,28 @@ uv run main.py   # 启动 CLI
 
 两家服务都走 OpenAI 兼容端点，所以不需要额外 SDK。
 
+### 安全：dry-run 与审计日志
+
+发送前每封信都会过一次校验（长度区间 + 错误关键词黑名单）。校验失败的信
+**不会发送**，但会照样写日志。
+
+每次生成（无论是真的发出去、被拦截、还是 dry-run）都会追加一行 JSONL 到
+`./logs/letters.jsonl`，包含 JD、生成内容、provider、model。用来复盘事故、
+迭代 prompt：
+
+```bash
+tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, letter_len}'
+```
+
+不想真的发到 BOSS 的话，用 `DRY_RUN=1` 启动：
+
+```bash
+DRY_RUN=1 uv run main.py
+```
+
+Selenium 照常浏览职位、抓 JD、调用 LLM，但不点"立即沟通"按钮。结束后看
+`logs/letters.jsonl` 调 prompt。
+
 
 ### chatgpt4 及以上运行方式
 如果尝试使用更新的chatGPT则不能保持最新版本为`v1.1.1`，同时如果报错信息为`An error occurred: Error code: 400 - {'error': {'message': "The requested model 'gpt-4o-mini' cannot be used with the Assistants API in v1. Follow the migration guide to upgrade to v2: https://platform.openai.com/docs/assistants/migration.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'unsupported_model'}}`

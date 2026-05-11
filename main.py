@@ -1,3 +1,5 @@
+import os
+
 from openai import OpenAI
 from packaging import version
 import openai
@@ -7,6 +9,10 @@ from vectorization import embed_pdf
 from website_oper.write_response import send_job_descriptions_to_chat
 
 if __name__ == '__main__':
+    dry_run = os.getenv("DRY_RUN", "").lower() in ("1", "true", "yes")
+    if dry_run:
+        print("⚠️  DRY_RUN=1 — letters will be generated and logged but NOT sent to BOSS.")
+
     while True:
         model = input("Which model do you want to use? (deepseek: 1, chatgpt: 2, Claud: 3): ")
         if model not in ["1", "2", "3"]:
@@ -22,7 +28,7 @@ if __name__ == '__main__':
     if model == "1":
         # DeepSeek
         vectorstore = embed_pdf("resume/my_cover.pdf", "./vectorstores")
-        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "deepseek", vectorstore=vectorstore)
+        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "deepseek", vectorstore=vectorstore, dry_run=dry_run)
 
     elif model == "2":
         chatgpt_model = {1: "gpt-4o", 2: "gpt-4o-turbo"}[int(input("Which ChatGPT model do you want to use? (gpt-4o: 1, gpt-4o-turbo: 2): "))]
@@ -39,8 +45,8 @@ if __name__ == '__main__':
         # It will come from frontend
         client_openAI = OpenAI(api_key=OPENAI_API_KEY)
         assistant_id = create_assistant(usr_name, chatgpt_model ,client_openAI)
-        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "chatgpt", client_openAI=client_openAI, assistant_id=assistant_id)
+        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "chatgpt", client_openAI=client_openAI, assistant_id=assistant_id, dry_run=dry_run)
     elif model == "3":
         # Claude via OpenAI-compatible endpoint
         vectorstore = embed_pdf("resume/my_cover.pdf", "./vectorstores")
-        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "claude", vectorstore=vectorstore)
+        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "claude", vectorstore=vectorstore, dry_run=dry_run)
