@@ -99,6 +99,10 @@ def send_job_descriptions_to_chat(
 
     job_index = 1
     iteration = 0
+    consecutive_misses = 0
+    # 推荐 feed 末尾、或者某条岗位卡 DOM 没渲染好，都会让 get_job_description
+    # 返回 None。连续 N 次拿不到就当列表到底了停掉，否则 job_index 会无限涨。
+    MAX_CONSECUTIVE_MISSES = 5
     # 第一轮按 label（如果有的话）筛 tag；后续轮次留在当前 feed，无需重复点
     finding_jobs.select_dropdown_option(label)
     while True:
@@ -107,6 +111,7 @@ def send_job_descriptions_to_chat(
             print(f"\n=== 第 {iteration} 轮: 处理 job_index={job_index} ===")
             job_description = finding_jobs.get_job_description_by_index(job_index)
             if job_description:
+                consecutive_misses = 0
                 element = finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 print(f"chat 按钮文字: {element!r}")
                 if element == "立即沟通":
@@ -162,6 +167,15 @@ def send_job_descriptions_to_chat(
                             dry_run=False,
                             sent=True,
                         )
+            else:
+                consecutive_misses += 1
+                print(f"job_index={job_index} 拿不到 JD（连续第 {consecutive_misses} 次）")
+                if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
+                    print(
+                        f"连续 {MAX_CONSECUTIVE_MISSES} 个岗位拿不到，"
+                        f"推测已到推荐 feed 列表底部，结束"
+                    )
+                    break
 
             time.sleep(3)
             job_index += 1
