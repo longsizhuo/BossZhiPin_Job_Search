@@ -16,6 +16,7 @@ dependencies = [
     "pypdf>=5.4.0",
     "chromadb>=0.6.3",
     "sentence-transformers>=3.0.0",
+    "undetected-chromedriver>=3.5.5",
 ]
 
 [tool.uv]

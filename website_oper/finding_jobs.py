@@ -4,12 +4,20 @@ import time
 # 让 Selenium 连接 ChromeDriver 时绕过系统代理
 os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
 
+import undetected_chromedriver as uc
 from selenium import webdriver
-from selenium.common import NoSuchElementException
-from selenium.webdriver.chrome.options import Options
+from selenium.common import NoSuchElementException, NoSuchWindowException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# 持久化 Chrome profile：第一次手动扫码后，cookie 会留在这里，
+# 后续运行就不需要再登。可用环境变量 BOSS_CHROME_PROFILE 覆盖。
+CHROME_PROFILE_DIR = os.path.abspath(
+    os.environ.get("BOSS_CHROME_PROFILE", "./chrome_profile")
+)
+
+LOGGED_IN_SELECTOR = '.user-nav, .nav-userinfo, [ka="header-username"]'
 
 # 全局 WebDriver 实例
 driver = None
@@ -26,7 +34,10 @@ def _wait_url_stable(driver, stable_for=2.0, timeout=30):
     last_url = driver.current_url
     last_change = time.time()
     while time.time() < end:
-        cur = driver.current_url
+        try:
+            cur = driver.current_url
+        except NoSuchWindowException:
+            return last_url
         if cur != last_url:
             last_url = cur
             last_change = time.time()
@@ -36,24 +47,34 @@ def _wait_url_stable(driver, stable_for=2.0, timeout=30):
     return last_url
 
 
+def _is_logged_in() -> bool:
+    """头部出现用户区元素则视为已登录。"""
+    try:
+        return bool(driver.find_elements(By.CSS_SELECTOR, LOGGED_IN_SELECTOR))
+    except NoSuchWindowException:
+        return False
+
+
+def _on_login_page(current_url: str) -> bool:
+    return any(s in current_url for s in ("/web/user/", "passport-zp", "/login"))
+
+
 def open_browser_with_options(url, browser):
     global driver
-    options = Options()
-    options.add_experimental_option("detach", True)
-    # 反自动化检测
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("useAutomationExtension", False)
-    options.add_argument("--disable-blink-features=AutomationControlled")
 
     if browser == "chrome":
-        driver = webdriver.Chrome(options=options)
+        # 用 undetected-chromedriver 起 Chrome：它内部已经处理了
+        # excludeSwitches / navigator.webdriver / Runtime.enable 等指纹，
+        # 比手工设 add_experimental_option 那一套对 BOSS 这种深度反爬有用。
+        options = uc.ChromeOptions()
+        options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
+        os.makedirs(CHROME_PROFILE_DIR, exist_ok=True)
+        driver = uc.Chrome(options=options)
         driver.maximize_window()
-        # 隐藏 webdriver 标志
-        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-            "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        })
     elif browser == "edge":
-        driver = webdriver.Edge()
+        edge_options = webdriver.EdgeOptions()
+        edge_options.add_experimental_option("detach", True)
+        driver = webdriver.Edge(options=edge_options)
         driver.maximize_window()
     elif browser == "safari":
         driver = webdriver.Safari()
@@ -63,55 +84,75 @@ def open_browser_with_options(url, browser):
 
     driver.get(url)
     print(f"页面加载中... 当前URL: {driver.current_url}")
-
-    # 先让 URL 在重定向中稳下来，再等登录按钮可点击；只等 title 不够，
-    # bounce 中间页也有 title，容易在抖动中途 find_element 扑空。
     stable_url = _wait_url_stable(driver, stable_for=2.0, timeout=30)
     print(f"页面已稳定，当前URL: {stable_url}")
-    try:
-        WebDriverWait(driver, 15).until(
-            EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "登录"))
-        )
-    except Exception:
-        print(f"未在稳定后的页面上找到登录入口，当前URL: {driver.current_url}")
-        raise
 
 
 def log_in():
+    """处理三种入口状态：已登录 / 在首页带 header 登录入口 / 已被踢到独立登录页。"""
     global driver
 
-    # 用文字内容找到"登录/注册"按钮
-    try:
-        login_button = WebDriverWait(driver, 15).until(
-            EC.element_to_be_clickable((By.LINK_TEXT, "登录/注册"))
-        )
-    except Exception:
-        # 备选：部分匹配
-        login_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "登录"))
-        )
-    login_button.click()
-    print("已点击登录按钮，等待登录方式选择...")
-    time.sleep(2)
+    if _is_logged_in():
+        print(f"检测到已登录（profile: {CHROME_PROFILE_DIR}），跳过扫码")
+        return
 
-    # 找到微信登录按钮（用文字匹配）
     try:
-        wechat_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "微信"))
-        )
-        wechat_button.click()
-        print("已选择微信登录，请扫码...")
-    except Exception:
-        print("未找到微信登录按钮，请手动选择登录方式...")
+        cur_url = driver.current_url
+    except NoSuchWindowException:
+        print("浏览器窗口已被关闭，可能被反爬拦截。建议先手动开一次 Chrome 用这个 profile 完成登录")
+        return
+    print(f"log_in 入口 URL: {cur_url}")
 
-    # 等待用户扫码登录成功（最多等 120 秒）
-    print("等待扫码登录... (最多等待120秒)")
+    # 不在登录页 → 先点 header 的"登录/注册"打开登录页
+    if not _on_login_page(cur_url):
+        try:
+            login_button = WebDriverWait(driver, 15).until(
+                EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "登录"))
+            )
+            login_button.click()
+            print("已点击 header 登录入口，等待登录页加载...")
+            _wait_url_stable(driver, stable_for=2.0, timeout=15)
+        except NoSuchWindowException:
+            print("点击 header 登录入口时窗口已关闭，疑似反爬触发")
+            return
+        except Exception:
+            try:
+                print(f"未找到 header 登录入口，当前URL: {driver.current_url}")
+            except NoSuchWindowException:
+                print("未找到 header 登录入口，窗口已关闭")
+                return
+
+    # 在登录页：找微信 tab。这个入口在 BOSS 上可能是 <a> / <div> / <span>，
+    # 所以按多个选择器依次试，不再硬卡 PARTIAL_LINK_TEXT。
+    wechat_selectors = [
+        (By.PARTIAL_LINK_TEXT, "微信"),
+        (By.XPATH, "//*[contains(@class,'wechat') or contains(@class,'wx-')]"),
+        (By.XPATH, "//*[(self::a or self::button or self::div or self::li or self::span)"
+                   " and contains(normalize-space(text()),'微信')]"),
+    ]
+    clicked_wechat = False
+    for by, sel in wechat_selectors:
+        try:
+            btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((by, sel)))
+            btn.click()
+            print(f"已点击微信登录入口（{by}={sel}），请扫码...")
+            clicked_wechat = True
+            break
+        except NoSuchWindowException:
+            print("查找微信入口时窗口已关闭，疑似反爬触发")
+            return
+        except Exception:
+            continue
+    if not clicked_wechat:
+        print("没自动点上微信入口，请在浏览器里手动选择登录方式（脚本会继续等扫码完成）")
+
+    # 等待扫码完成（5 分钟，留足第一次手动登录的时间）
+    print("等待扫码登录... (最多等待 300 秒)")
     try:
-        WebDriverWait(driver, 120).until(
-            lambda d: "登录" not in d.page_source[:5000] or
-                      d.find_elements(By.CSS_SELECTOR, '.user-nav, .nav-userinfo, [ka="header-username"]')
-        )
-        print("登录成功！")
+        WebDriverWait(driver, 300).until(lambda d: _is_logged_in())
+        print("登录成功！cookie 已写入 profile，下次跑应该不用再扫")
+    except NoSuchWindowException:
+        print("等待登录期间窗口已关闭，疑似反爬触发")
     except Exception:
         print("登录超时，请确认是否已扫码登录")
 

@@ -43,4 +43,5 @@
 .venv/
 /vectorstores/
 /logs/
+/chrome_profile/
 
