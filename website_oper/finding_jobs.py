@@ -6,10 +6,13 @@ sync 调用方不需要全部改成 async，只需要换调用名。
 """
 
 import asyncio
+import logging
 import os
 
 import nodriver as uc
 from nodriver import Config
+
+log = logging.getLogger(__name__)
 
 # 持久化 Chrome profile：第一次手动扫码后 cookie 会留下，之后跑就跳过登录。
 # 可用 BOSS_CHROME_PROFILE 环境变量覆盖路径。
@@ -72,11 +75,11 @@ async def _open_browser_impl(url: str) -> None:
         await _tab.activate()
         await _tab.bring_to_front()
     except Exception as e:
-        print(f"激活控制 tab 失败（{e}），不影响后续操作")
+        log.warning("激活控制 tab 失败（%s），不影响后续操作", e)
 
-    print(f"页面加载中... 当前URL: {_tab.url}")
+    log.info("页面加载中... 当前URL: %s", _tab.url)
     stable_url = await _wait_url_stable(stable_for=2.0, timeout=30)
-    print(f"页面已稳定，当前URL: {stable_url}")
+    log.info("页面已稳定，当前URL: %s", stable_url)
 
 
 def open_browser_with_options(url: str, browser: str) -> None:
@@ -90,40 +93,40 @@ def open_browser_with_options(url: str, browser: str) -> None:
 
 async def _log_in_impl() -> None:
     if await _is_logged_in():
-        print(f"检测到已登录（profile: {CHROME_PROFILE_DIR}），跳过扫码")
+        log.info("检测到已登录（profile: %s），跳过扫码", CHROME_PROFILE_DIR)
         return
 
     cur_url = _tab.url
-    print(f"log_in 入口 URL: {cur_url}")
+    log.info("log_in 入口 URL: %s", cur_url)
 
     if not _on_login_page(cur_url):
         try:
             login_btn = await _tab.find("登录", best_match=True, timeout=15)
             if login_btn:
                 await login_btn.click()
-                print("已点击 header 登录入口")
+                log.info("已点击 header 登录入口")
                 await _wait_url_stable(stable_for=2.0, timeout=15)
         except Exception as e:
-            print(f"找不到 header 登录入口（{e}），尝试直接在当前页找微信入口")
+            log.warning("找不到 header 登录入口（%s），尝试直接在当前页找微信入口", e)
 
     try:
         wechat_btn = await _tab.find("微信", best_match=True, timeout=10)
         if wechat_btn:
             await wechat_btn.click()
-            print("已点击微信登录入口，请扫码...")
+            log.info("已点击微信登录入口，请扫码...")
         else:
-            print("未自动点上微信入口，请在浏览器里手动选择登录方式")
+            log.warning("未自动点上微信入口，请在浏览器里手动选择登录方式")
     except Exception as e:
-        print(f"查找微信入口出错（{e}），请手动选择登录方式")
+        log.warning("查找微信入口出错（%s），请手动选择登录方式", e)
 
-    print("等待扫码登录... (最多 300 秒)")
+    log.info("等待扫码登录... (最多 300 秒)")
     deadline = asyncio.get_event_loop().time() + 300
     while asyncio.get_event_loop().time() < deadline:
         if await _is_logged_in():
-            print("登录成功！cookie 已写入 profile，下次跑应该不用再扫")
+            log.info("登录成功！cookie 已写入 profile，下次跑应该不用再扫")
             return
         await asyncio.sleep(2)
-    print("登录超时，请确认是否已扫码登录")
+    log.warning("登录超时，请确认是否已扫码登录")
 
 
 def log_in() -> None:
@@ -139,39 +142,38 @@ async def _xpath_safe(xp: str, timeout: float = 3.0) -> list:
         )
         return result or []
     except asyncio.TimeoutError:
-        print(f"  ⏱ xpath 超时: {xp[:80]}")
+        log.warning("xpath 超时: %s", xp[:80])
         return []
     except Exception as e:
-        print(f"  ✗ xpath 出错: {type(e).__name__}: {e}")
+        log.warning("xpath 出错: %s: %s", type(e).__name__, e)
         return []
 
 
 async def _select_dropdown_option_impl(label: str) -> None:
     """优先点"推荐岗位 tag" → 下拉菜单 → fallback 默认推荐 feed（不过滤）。"""
-    print(f"[select_dropdown_option] label={label!r}")
+    log.info("[select_dropdown_option] label=%r", label)
 
-    print("  路径 1: 找推荐 tag chip ...")
+    log.info("  路径 1: 找推荐 tag chip ...")
     chip_xp = (
         "//*[contains(@class,'recommend-job-btn')"
         " and contains(@class,'has-tooltip')]"
     )
     chips = await _xpath_safe(chip_xp, timeout=3)
-    print(f"    找到 {len(chips)} 个 tag chip")
+    log.info("    找到 %d 个 tag chip", len(chips))
     for el in chips:
         text = (el.text or "").strip()
         if label in text:
-            print(f"    → 命中 '{text}'，点击")
+            log.info("    → 命中 %r，点击", text)
             await el.click()
             return
 
-    print("  路径 2: 找下拉菜单触发器 ...")
+    log.info("  路径 2: 找下拉菜单触发器 ...")
     trigger = await _xpath_safe(
         "//*[@id='wrap']/div[2]/div[1]/div/div[1]/div", timeout=3
     )
     if trigger:
-        print("    → 点开下拉")
+        log.info("    → 点开下拉")
         await trigger[0].click()
-        # 等下拉容器出现再查 option
         await _xpath_safe(
             "//ul[contains(@class,'dropdown-expect-list')]", timeout=3
         )
@@ -179,41 +181,41 @@ async def _select_dropdown_option_impl(label: str) -> None:
             f"//li[contains(text(), '{label}')]", timeout=3
         )
         if options:
-            print(f"    → 命中下拉 option '{label}'，点击")
+            log.info("    → 命中下拉 option %r，点击", label)
             await options[0].click()
             return
-        print(f"    下拉里没有 '{label}'")
+        log.info("    下拉里没有 %r", label)
     else:
-        print("    没找到下拉触发器")
+        log.info("    没找到下拉触发器")
 
-    print(f"  路径 3: fallback —— 用 BOSS 默认的推荐 feed 继续（不主动选 tag）")
+    log.info("  路径 3: fallback —— 用 BOSS 默认的推荐 feed 继续（不主动选 tag）")
 
 
 def select_dropdown_option(label: str) -> None:
     """空 label 表示用 BOSS 默认推荐 feed，不主动选 tag。"""
     if not label:
-        print("[select_dropdown_option] label 为空，沿用当前推荐 feed")
+        log.info("[select_dropdown_option] label 为空，沿用当前推荐 feed")
         return
     _run(_select_dropdown_option_impl(label))
 
 
 async def _get_job_description_by_index_impl(index: int) -> str | None:
-    print(f"[get_job_description_by_index] index={index}")
+    log.info("[get_job_description_by_index] index=%d", index)
     job_xpath = f"//*[@id='wrap']/div[2]/div[2]/div/div/div[1]/ul/li[{index}]"
     jobs = await _xpath_safe(job_xpath, timeout=5)
     if not jobs:
-        print(f"  没找到列表第 {index} 个岗位（xpath: {job_xpath}）")
+        log.info("  没找到列表第 %d 个岗位（xpath: %s）", index, job_xpath)
         return None
-    print(f"  点击列表第 {index} 个岗位")
+    log.info("  点击列表第 %d 个岗位", index)
     await jobs[0].click()
 
     desc_xpath = "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[2]/p"
     descs = await _xpath_safe(desc_xpath, timeout=10)
     if not descs:
-        print(f"  点击后 10s 内没读到 JD（xpath: {desc_xpath}）")
+        log.info("  点击后 10s 内没读到 JD（xpath: %s）", desc_xpath)
         return None
     jd = descs[0].text or ""
-    print(f"  JD 长度 {len(jd)} 字符")
+    log.info("  JD 长度 %d 字符", len(jd))
     return jd
 
 

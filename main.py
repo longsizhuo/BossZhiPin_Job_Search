@@ -1,3 +1,17 @@
+"""脚本入口。
+
+启动流程：
+1. 读 ``.env``，根据有哪些 provider key 自动选用（一个直接用，多个让用户选）。
+2. 兜底 ``BOSS_USR_NAME`` / ``BOSS_LABEL`` / ``RESUME_PATH`` 三个可选配置：
+   不设就 prompt 用户输入或用默认值。
+3. 按 provider 走 deepseek / chatgpt / claude 三条分支之一，进入主循环。
+
+设计：用户输入提示用 ``print``，业务流程用 ``logging``。logging 在这里
+``basicConfig`` 统一初始化，所有子模块通过 ``logging.getLogger(__name__)`` 写入。
+"""
+from __future__ import annotations
+
+import logging
 import os
 import sys
 from pathlib import Path
@@ -5,11 +19,20 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from models.openai_assistant import create_assistant, OPENAI_API_KEY
+from models.openai_assistant import OPENAI_API_KEY, create_assistant
 from vectorization import embed_pdf
 from website_oper.write_response import send_job_descriptions_to_chat
 
 load_dotenv()
+
+# 业务日志默认 INFO 级；想看 nodriver / 第三方库的 DEBUG 信息可以
+# `LOGLEVEL=DEBUG uv run main.py`
+logging.basicConfig(
+    level=os.getenv("LOGLEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 PROVIDER_ENV_KEYS: dict[str, str] = {
     "deepseek": "DEEPSEEK_API_KEY",
