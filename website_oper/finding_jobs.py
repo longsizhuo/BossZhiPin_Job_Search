@@ -4,9 +4,9 @@ import time
 # 让 Selenium 连接 ChromeDriver 时绕过系统代理
 os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
 
-import undetected_chromedriver as uc
 from selenium import webdriver
 from selenium.common import NoSuchElementException, NoSuchWindowException
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -63,14 +63,18 @@ def open_browser_with_options(url, browser):
     global driver
 
     if browser == "chrome":
-        # 用 undetected-chromedriver 起 Chrome：它内部已经处理了
-        # excludeSwitches / navigator.webdriver / Runtime.enable 等指纹，
-        # 比手工设 add_experimental_option 那一套对 BOSS 这种深度反爬有用。
-        options = uc.ChromeOptions()
-        options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
         os.makedirs(CHROME_PROFILE_DIR, exist_ok=True)
-        driver = uc.Chrome(options=options)
+        options = Options()
+        options.add_experimental_option("detach", True)
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option("useAutomationExtension", False)
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
+        driver = webdriver.Chrome(options=options)
         driver.maximize_window()
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        })
     elif browser == "edge":
         edge_options = webdriver.EdgeOptions()
         edge_options.add_experimental_option("detach", True)
