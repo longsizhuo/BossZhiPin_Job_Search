@@ -130,31 +130,63 @@ def log_in() -> None:
     _run(_log_in_impl())
 
 
+async def _xpath_safe(xp: str, timeout: float = 3.0) -> list:
+    """xpath + 硬超时兜底，nodriver 自己的 timeout 不可靠时不会拖死整个脚本。"""
+    try:
+        result = await asyncio.wait_for(
+            _tab.xpath(xp, timeout=timeout),
+            timeout=timeout + 2,
+        )
+        return result or []
+    except asyncio.TimeoutError:
+        print(f"  ⏱ xpath 超时: {xp[:80]}")
+        return []
+    except Exception as e:
+        print(f"  ✗ xpath 出错: {type(e).__name__}: {e}")
+        return []
+
+
 async def _select_dropdown_option_impl(label: str) -> None:
-    """优先点首页的"推荐岗位 tag"，没有就退回到下拉菜单选项。"""
-    # 第一路径：tag 按钮（class="recommend-job-btn has-tooltip"）
-    triggers = await _tab.select_all(".recommend-job-btn.has-tooltip")
-    for el in triggers or []:
-        if label in (el.text or ""):
+    """优先点"推荐岗位 tag" → 下拉菜单 → fallback 默认推荐 feed（不过滤）。"""
+    print(f"[select_dropdown_option] label={label!r}")
+
+    print("  路径 1: 找推荐 tag chip ...")
+    chip_xp = (
+        "//*[contains(@class,'recommend-job-btn')"
+        " and contains(@class,'has-tooltip')]"
+    )
+    chips = await _xpath_safe(chip_xp, timeout=3)
+    print(f"    找到 {len(chips)} 个 tag chip")
+    for el in chips:
+        text = (el.text or "").strip()
+        if label in text:
+            print(f"    → 命中 '{text}'，点击")
             await el.click()
             return
 
-    # 第二路径：下拉菜单
-    trigger = await _tab.xpath(
-        "//*[@id='wrap']/div[2]/div[1]/div/div[1]/div", timeout=10
+    print("  路径 2: 找下拉菜单触发器 ...")
+    trigger = await _xpath_safe(
+        "//*[@id='wrap']/div[2]/div[1]/div/div[1]/div", timeout=3
     )
     if trigger:
+        print("    → 点开下拉")
         await trigger[0].click()
+        # 等下拉容器出现再查 option
+        await _xpath_safe(
+            "//ul[contains(@class,'dropdown-expect-list')]", timeout=3
+        )
+        options = await _xpath_safe(
+            f"//li[contains(text(), '{label}')]", timeout=3
+        )
+        if options:
+            print(f"    → 命中下拉 option '{label}'，点击")
+            await options[0].click()
+            return
+        print(f"    下拉里没有 '{label}'")
     else:
-        print(f"未找到岗位下拉触发器，label={label}")
-        return
+        print("    没找到下拉触发器")
 
-    await _tab.select("ul.dropdown-expect-list", timeout=10)
-    options = await _tab.xpath(
-        f"//li[contains(text(), '{label}')]", timeout=10
-    )
-    if options:
-        await options[0].click()
+    print(f"  路径 3: fallback —— 用 BOSS 默认的推荐 feed 继续（不主动选 tag）")
 
 
 def select_dropdown_option(_unused_driver, label: str) -> None:
@@ -163,18 +195,23 @@ def select_dropdown_option(_unused_driver, label: str) -> None:
 
 
 async def _get_job_description_by_index_impl(index: int) -> str | None:
+    print(f"[get_job_description_by_index] index={index}")
     job_xpath = f"//*[@id='wrap']/div[2]/div[2]/div/div/div[1]/ul/li[{index}]"
-    jobs = await _tab.xpath(job_xpath, timeout=10)
+    jobs = await _xpath_safe(job_xpath, timeout=5)
     if not jobs:
-        print(f"No job found at index {index}.")
+        print(f"  没找到列表第 {index} 个岗位（xpath: {job_xpath}）")
         return None
+    print(f"  点击列表第 {index} 个岗位")
     await jobs[0].click()
 
     desc_xpath = "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[2]/p"
-    descs = await _tab.xpath(desc_xpath, timeout=10)
+    descs = await _xpath_safe(desc_xpath, timeout=10)
     if not descs:
+        print(f"  点击后 10s 内没读到 JD（xpath: {desc_xpath}）")
         return None
-    return descs[0].text
+    jd = descs[0].text or ""
+    print(f"  JD 长度 {len(jd)} 字符")
+    return jd
 
 
 def get_job_description_by_index(index: int) -> str | None:

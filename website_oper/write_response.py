@@ -104,13 +104,16 @@ def send_job_descriptions_to_chat(
     finding_jobs.log_in()
 
     job_index = 1
+    iteration = 0
     while True:
         try:
+            iteration += 1
+            print(f"\n=== 第 {iteration} 轮: 处理 job_index={job_index} ===")
             finding_jobs.select_dropdown_option(None, label)
             job_description = finding_jobs.get_job_description_by_index(job_index)
             if job_description:
                 element = finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
-                print(element)
+                print(f"chat 按钮文字: {element!r}")
                 if element == "立即沟通":
                     if models in ("deepseek", "claude"):
                         response = generate_letter(usr_name, vectorstore, job_description, model=models)
