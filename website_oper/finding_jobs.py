@@ -17,13 +17,6 @@ CHROME_PROFILE_DIR = os.path.abspath(
     os.environ.get("BOSS_CHROME_PROFILE", "./chrome_profile")
 )
 
-# BOSS 头部出现这些元素之一即视为已登录
-LOGGED_IN_SELECTORS = (
-    ".user-nav",
-    ".nav-userinfo",
-    '[ka="header-username"]',
-)
-
 _browser: uc.Browser | None = None
 _tab: uc.Tab | None = None
 
@@ -41,18 +34,10 @@ def _on_login_page(url: str) -> bool:
 
 
 async def _is_logged_in() -> bool:
+    """登录态以 URL 为准：BOSS 未登录时一定 redirect 到 /web/user/ 类路径。"""
     if _tab is None:
         return False
-    if _on_login_page(_tab.url):
-        return False
-    for sel in LOGGED_IN_SELECTORS:
-        try:
-            el = await _tab.select(sel, timeout=0)
-        except Exception:
-            el = None
-        if el:
-            return True
-    return False
+    return not _on_login_page(_tab.url)
 
 
 async def _wait_url_stable(stable_for: float = 2.0, timeout: float = 30) -> str:
