@@ -89,6 +89,29 @@ Note: This mode does not support custom APIs but runs faster.
 Both providers are reached through the OpenAI-compatible endpoint, so no extra
 SDK is required beyond `openai`.
 
+### Safety: dry-run and audit log
+
+Before sending anything to BOSS, every generated letter is validated against
+length bounds and a blacklist of error-string / refusal phrases. Failures are
+logged but never sent.
+
+Every attempt — sent, blocked, or dry-run — is appended to
+`./logs/letters.jsonl` with the job description, the letter, the provider and
+the model. Use this for prompt iteration and incident review:
+
+```bash
+tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, letter_len}'
+```
+
+To preview generation without sending anything to BOSS, run with `DRY_RUN=1`:
+
+```bash
+DRY_RUN=1 uv run main.py
+```
+
+The Selenium flow still browses and scrapes job descriptions, but skips the
+"立即沟通" click. Tune the prompt by reviewing `logs/letters.jsonl` afterwards.
+
 ### Run with ChatGPT-4 and Above
 
 If you're using newer ChatGPT models, you may encounter an error if you're not using version `v1.1.1`:
