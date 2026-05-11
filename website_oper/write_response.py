@@ -1,8 +1,9 @@
 import json
+import re
 import time
-from models.llm import PROVIDERS, generate_letter
 
 from audit import log_attempt, validate_letter
+from models.llm import PROVIDERS, generate_letter
 from website_oper import finding_jobs
 
 
@@ -17,7 +18,7 @@ def create_thread(client):
         return None
 
 
-def chat(user_input, assistant_id, client, thread_id=None):
+def chat(user_input, assistant_id, client, usr_name: str = "", thread_id=None):
     if thread_id is None:
         thread_id = create_thread(client)
         if thread_id is None:
@@ -25,53 +26,46 @@ def chat(user_input, assistant_id, client, thread_id=None):
 
     print(f"Received message: {user_input} in thread {thread_id}")
 
-    # Run the Assistant
     try:
-        # Add the user's message to the thread
         client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=user_input
+            thread_id=thread_id, role="user", content=user_input
         )
-
-        # Start the Assistant Run
         run = client.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=assistant_id
+            thread_id=thread_id, assistant_id=assistant_id
         )
 
-        # Check if the Run requires action (function call)
+        # 等 run 完成。原来这里在 queued / in_progress 时直接 busy-loop 不 sleep，
+        # 单次招呼可以打几万次 API；同时 failed / cancelled / expired 没处理，
+        # 命中就是死循环。加上 5 分钟硬超时 + 每轮 1s sleep + 终态识别。
+        TERMINAL_FAIL_STATES = {"failed", "cancelled", "expired", "incomplete"}
+        deadline = time.time() + 300
         while True:
             run_status = client.beta.threads.runs.retrieve(
-                thread_id=thread_id,
-                run_id=run.id,
-                timeout=60  # 设置超时时间为60秒
+                thread_id=thread_id, run_id=run.id, timeout=60
             )
-
-            if run_status.status == 'completed':
+            if run_status.status == "completed":
                 break
-            elif run_status.status == 'requires_action':
-                # Here you can handle specific actions if your assistant requires them
-                # ...
-                time.sleep(1)  # Wait for a second before checking again
+            if run_status.status in TERMINAL_FAIL_STATES:
+                err = f"OpenAI run 进入失败终态：{run_status.status}"
+                print(f"[chat] {err}")
+                return json.dumps({"error": err})
+            if time.time() > deadline:
+                print("[chat] run 等待超过 5 分钟，放弃")
+                return json.dumps({"error": "run timeout (>300s)"})
+            time.sleep(1)
 
-        # Retrieve and return the latest message from the assistant
         messages = client.beta.threads.messages.list(thread_id=thread_id)
         assistant_message = messages.data[0].content[0].text.value
 
-        # 将换行符替换为一个空格
-        formatted_message = assistant_message.replace("\n", " ").replace(" ", "").replace("真诚的，龙思卓", "")
-        import re
-        formatted_message = re.sub(r'【.*?】', '', formatted_message)
-
-
-        # response_data = json.dumps({"response": assistant_message, "thread_id": thread_id})
+        formatted_message = assistant_message.replace("\n", " ").replace(" ", "")
+        if usr_name:
+            formatted_message = formatted_message.replace(f"真诚的，{usr_name}", "")
+        formatted_message = re.sub(r"【.*?】", "", formatted_message)
         return formatted_message
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        error_response = json.dumps({"error": str(e)})
-        return error_response
+        return json.dumps({"error": str(e)})
 
 
 def send_response_and_go_back(response):
@@ -105,20 +99,31 @@ def send_job_descriptions_to_chat(
 
     job_index = 1
     iteration = 0
+    consecutive_misses = 0
+    # 推荐 feed 末尾、或者某条岗位卡 DOM 没渲染好，都会让 get_job_description
+    # 返回 None。连续 N 次拿不到就当列表到底了停掉，否则 job_index 会无限涨。
+    MAX_CONSECUTIVE_MISSES = 5
+    # 第一轮按 label（如果有的话）筛 tag；后续轮次留在当前 feed，无需重复点
+    finding_jobs.select_dropdown_option(label)
     while True:
         try:
             iteration += 1
             print(f"\n=== 第 {iteration} 轮: 处理 job_index={job_index} ===")
-            finding_jobs.select_dropdown_option(None, label)
             job_description = finding_jobs.get_job_description_by_index(job_index)
             if job_description:
+                consecutive_misses = 0
                 element = finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 print(f"chat 按钮文字: {element!r}")
                 if element == "立即沟通":
                     if models in ("deepseek", "claude"):
                         response = generate_letter(usr_name, vectorstore, job_description, model=models)
                     else:
-                        response = chat(user_input=job_description, client=client_openAI, assistant_id=assistant_id)
+                        response = chat(
+                            user_input=job_description,
+                            client=client_openAI,
+                            assistant_id=assistant_id,
+                            usr_name=usr_name,
+                        )
 
                     validation = validate_letter(response)
                     resolved_model = _resolve_model_name(models, assistant_id)
@@ -162,9 +167,18 @@ def send_job_descriptions_to_chat(
                             dry_run=False,
                             sent=True,
                         )
+            else:
+                consecutive_misses += 1
+                print(f"job_index={job_index} 拿不到 JD（连续第 {consecutive_misses} 次）")
+                if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
+                    print(
+                        f"连续 {MAX_CONSECUTIVE_MISSES} 个岗位拿不到，"
+                        f"推测已到推荐 feed 列表底部，结束"
+                    )
+                    break
 
             time.sleep(3)
-            # job_index += 1
+            job_index += 1
 
         except Exception as e:
             print(f"An error occurred: {e}")

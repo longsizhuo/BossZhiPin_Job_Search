@@ -1,58 +1,60 @@
 import json
 import os
+from pathlib import Path
 
-from openai import OpenAI
-from models.prompts import assistant_instructions
 from dotenv import load_dotenv
+
+from models.prompts import assistant_instructions
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
+
+DEFAULT_RESUME_PATH = "resume/my_cover.pdf"
+ASSISTANT_FILE_PATH = "assistant.json"
 
 
-# Create or load assistant
-def create_assistant(usr_name, chatgpt_model, client):
-    assistant_file_path = '../assistant.json'
+def create_assistant(usr_name, chatgpt_model, client, resume_path: str | None = None):
+    """Create (or load) an OpenAI Assistant backed by the user's PDF resume.
 
-    # If there is an assistant.json file already, then load that assistant
-    if os.path.exists(assistant_file_path):
-        with open(assistant_file_path, 'r') as file:
+    ``resume_path`` defaults to ``./resume/my_cover.pdf``; pass the path resolved
+    from the ``RESUME_PATH`` env var (or wherever) to override it.
+    """
+    resume_path = resume_path or DEFAULT_RESUME_PATH
+
+    if os.path.exists(ASSISTANT_FILE_PATH):
+        with open(ASSISTANT_FILE_PATH, "r") as file:
             assistant_data = json.load(file)
-            assistant_id = assistant_data['assistant_id']
-            print("Loaded existing assistant ID.")
-    else:
-        # If no assistant.json is present, create a new assistant using the below specifications
+            print(f"Loaded existing assistant ID from {ASSISTANT_FILE_PATH}")
+            return assistant_data["assistant_id"]
 
-        # To change the knowledge document, modify the file name below to match your document If you want to add
-        # multiple files, paste this function into ChatGPT and ask for it to add support for multiple files
-        # file = client.files.create(file=open("resume/my_cover.pdf", "rb"),
-        #                            purpose='assistants')
-        vector_store = client.vector_stores.create(name="My Resume")
-        print(vector_store)
-        file_streams = [open("./resume/my_cover.pdf", "rb")]
-        # Use the upload and poll SDK helper to upload the files, add them to the vector store,
-        # and poll the status of the file batch for completion.
-        file_batch = client.vector_stores.file_batches.upload_and_poll(
-            vector_store_id=vector_store.id, files=file_streams
-        )
-        # New version of the assistant
-        assistant = client.beta.assistants.create(
-            instructions=assistant_instructions(usr_name),
-            model=chatgpt_model,
-            tools=[{"type": "file_search"}],
+    if not Path(resume_path).is_file():
+        raise FileNotFoundError(
+            f"简历文件不存在：{resume_path}。把 PDF 放到这个路径，"
+            f"或者在 .env 里设 RESUME_PATH 指向其他位置。"
         )
 
-        assistant = client.beta.assistants.update(
-            assistant_id=assistant.id,
-            tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}},
+    vector_store = client.vector_stores.create(name="My Resume")
+    print(f"Created OpenAI vector store: {vector_store.id}")
+
+    with open(resume_path, "rb") as resume_file:
+        client.vector_stores.file_batches.upload_and_poll(
+            vector_store_id=vector_store.id, files=[resume_file]
         )
 
-        # Create a new assistant.json file to load on future runs
-        with open(assistant_file_path, 'w') as file:
-            json.dump({'assistant_id': assistant.id}, file)
-            print("Created a new assistant and saved the ID.")
+    assistant = client.beta.assistants.create(
+        instructions=assistant_instructions(usr_name),
+        model=chatgpt_model,
+        tools=[{"type": "file_search"}],
+    )
+    assistant = client.beta.assistants.update(
+        assistant_id=assistant.id,
+        tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}},
+    )
 
-        assistant_id = assistant.id
+    with open(ASSISTANT_FILE_PATH, "w") as file:
+        json.dump({"assistant_id": assistant.id}, file)
+        print(f"Created a new assistant, saved ID to {ASSISTANT_FILE_PATH}")
 
-    return assistant_id
+    return assistant.id

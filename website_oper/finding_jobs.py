@@ -189,8 +189,11 @@ async def _select_dropdown_option_impl(label: str) -> None:
     print(f"  路径 3: fallback —— 用 BOSS 默认的推荐 feed 继续（不主动选 tag）")
 
 
-def select_dropdown_option(_unused_driver, label: str) -> None:
-    """保留旧签名（第一个参数曾经是 driver）方便 write_response.py 渐进迁移。"""
+def select_dropdown_option(label: str) -> None:
+    """空 label 表示用 BOSS 默认推荐 feed，不主动选 tag。"""
+    if not label:
+        print("[select_dropdown_option] label 为空，沿用当前推荐 feed")
+        return
     _run(_select_dropdown_option_impl(label))
 
 
