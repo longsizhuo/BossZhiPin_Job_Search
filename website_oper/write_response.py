@@ -34,14 +34,25 @@ def chat(user_input, assistant_id, client, usr_name: str = "", thread_id=None):
             thread_id=thread_id, assistant_id=assistant_id
         )
 
+        # 等 run 完成。原来这里在 queued / in_progress 时直接 busy-loop 不 sleep，
+        # 单次招呼可以打几万次 API；同时 failed / cancelled / expired 没处理，
+        # 命中就是死循环。加上 5 分钟硬超时 + 每轮 1s sleep + 终态识别。
+        TERMINAL_FAIL_STATES = {"failed", "cancelled", "expired", "incomplete"}
+        deadline = time.time() + 300
         while True:
             run_status = client.beta.threads.runs.retrieve(
                 thread_id=thread_id, run_id=run.id, timeout=60
             )
             if run_status.status == "completed":
                 break
-            if run_status.status == "requires_action":
-                time.sleep(1)
+            if run_status.status in TERMINAL_FAIL_STATES:
+                err = f"OpenAI run 进入失败终态：{run_status.status}"
+                print(f"[chat] {err}")
+                return json.dumps({"error": err})
+            if time.time() > deadline:
+                print("[chat] run 等待超过 5 分钟，放弃")
+                return json.dumps({"error": "run timeout (>300s)"})
+            time.sleep(1)
 
         messages = client.beta.threads.messages.list(thread_id=thread_id)
         assistant_message = messages.data[0].content[0].text.value
