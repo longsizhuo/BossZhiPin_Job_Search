@@ -4,9 +4,6 @@ import time
 # 让 Selenium 连接 ChromeDriver 时绕过系统代理
 os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
 
-import chromedriver_autoinstaller
-chromedriver_autoinstaller.install()
-
 from selenium import webdriver
 from selenium.common import NoSuchElementException
 from selenium.webdriver.chrome.options import Options
@@ -21,6 +18,22 @@ driver = None
 def get_driver():
     global driver
     return driver
+
+
+def _wait_url_stable(driver, stable_for=2.0, timeout=30):
+    """等到 URL 连续 stable_for 秒未变化再返回，避开 BOSS 登录页的重定向抖动。"""
+    end = time.time() + timeout
+    last_url = driver.current_url
+    last_change = time.time()
+    while time.time() < end:
+        cur = driver.current_url
+        if cur != last_url:
+            last_url = cur
+            last_change = time.time()
+        elif time.time() - last_change >= stable_for:
+            return cur
+        time.sleep(0.2)
+    return last_url
 
 
 def open_browser_with_options(url, browser):
@@ -51,14 +64,16 @@ def open_browser_with_options(url, browser):
     driver.get(url)
     print(f"页面加载中... 当前URL: {driver.current_url}")
 
-    # 等待页面加载完成
+    # 先让 URL 在重定向中稳下来，再等登录按钮可点击；只等 title 不够，
+    # bounce 中间页也有 title，容易在抖动中途 find_element 扑空。
+    stable_url = _wait_url_stable(driver, stable_for=2.0, timeout=30)
+    print(f"页面已稳定，当前URL: {stable_url}")
     try:
-        WebDriverWait(driver, 30).until(
-            lambda d: d.title and len(d.title) > 0
+        WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "登录"))
         )
-        print(f"页面已加载，标题: {driver.title}")
     except Exception:
-        print(f"等待页面超时，当前URL: {driver.current_url}")
+        print(f"未在稳定后的页面上找到登录入口，当前URL: {driver.current_url}")
         raise
 
 
