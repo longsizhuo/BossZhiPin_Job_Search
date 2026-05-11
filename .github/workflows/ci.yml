@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# 同一分支并行 push 时取消旧 run，省 CI 配额
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # commit message 带 [skip ci] 的跳过整个 job
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: 安装 Python 3.13
+        run: uv python install 3.13
+
+      - name: 安装依赖（frozen lockfile）
+        run: uv sync --frozen
+
+      - name: Smoke import check
+        # 没有真测试也能拦下"改名 / 移文件 / import 烂掉"那一类回归。
+        # 每多一个核心模块就往这里加一行。
+        run: |
+          uv run python -c "import main"
+          uv run python -c "from audit import validate_letter, log_attempt"
+          uv run python -c "from audit.telemetry import record_llm_call, telemetry_summary, estimate_cost_cny"
+          uv run python -c "from utils.retry import retry_with_backoff"
+          uv run python -c "from vectorization import VectorStore, embed_pdf, file_hash, split_text"
+          uv run python -c "from models.llm import PROVIDERS, generate_letter, _build_client"
+          uv run python -c "from models.openai_assistant import create_assistant, OPENAI_API_KEY"
+          uv run python -c "from models.prompts import assistant_instructions"
+          uv run python -c "from website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message"
+          uv run python -c "from website_oper.write_response import send_job_descriptions_to_chat, chat"
+
+      - name: 跑 pytest
+        run: uv run pytest tests/ -v --tb=short
+        env:
+          # 单测不需要真凭据，给一个假值避免下游意外去读真的 .env
+          DEEPSEEK_API_KEY: test-fake-key
+          BOSS_RETRY_BASE_DELAY: "0.01"  # 加速 retry 测试
+          BOSS_RETRY_MAX_DELAY: "0.05"
+
+  no-leak:
+    # 防止 .env / assistant.json / chrome_profile/* 这类敏感产物意外提交
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检查仓库里没意外提交敏感文件
+        run: |
+          for f in .env assistant.json; do
+            if git ls-files | grep -qE "^${f}\$"; then
+              echo "❌ 仓库里追踪了不该提交的文件：${f}"
+              exit 1
+            fi
+          done
+          if git ls-files | grep -qE "^chrome_profile/|^vectorstores/|^logs/"; then
+            echo "❌ 仓库里追踪了 chrome_profile/ vectorstores/ logs/ 之一，应该都在 .gitignore"
+            exit 1
+          fi
+          echo "✅ 敏感产物未被追踪"
