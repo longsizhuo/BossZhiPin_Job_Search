@@ -1,19 +1,161 @@
-## Main Content
-This is a completely free script — all you need to do is configure your own OpenAI API.
+# BOSS Zhipin Auto-Greet
 
-If you find this script helpful during this tough job-hunting season, I would be truly honored if you could give it a **star** ⭐️.
+[中文文档](README_CN.md) · [English](README.md)
 
-If this script brings you some warmth in this cold recruitment season, that alone would mean a lot to me.
+Reads job descriptions from BOSS Zhipin, asks an LLM to write a polite cover-letter greeting, validates it, then sends it to the recruiter. DeepSeek / OpenAI / Claude all supported — any single key gets you running.
 
-Please don’t use this script to exploit others. If someone is already at the point of relying on scripts to apply for jobs, they probably don’t have much left to be squeezed.
+> The original author paused maintenance; a small group of us keeps it going. We've migrated to [uv](https://docs.astral.sh/uv/), dropped the langchain stack, and replaced Selenium with [nodriver](https://github.com/ultrafunkamsterdam/nodriver) (much steadier against BOSS's anti-bot).
 
+> ⚠️ Please don't weaponise this against vulnerable jobseekers. If someone needs a script to apply for jobs, there's not much left to squeeze out of them.
 
+---
 
-[中文文档](README_CN.md) 
+## Quick Start (5 minutes)
 
-[English](README.md)
+### Prerequisites
 
-Thanks to all the amazing people supporting my work!
+- Python >= 3.11
+- macOS / Linux / Windows. Chrome / Chromium only — nodriver does not support Edge or Safari.
+- A stable Chrome installation (not Chromium beta).
+- [uv](https://docs.astral.sh/uv/): `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+### Run it
+
+```bash
+# 1. Clone + install deps
+git clone https://github.com/longsizhuo/BossZhiPin_Job_Search.git
+cd BossZhiPin_Job_Search
+uv sync
+
+# 2. Configure API keys
+cp .env.example .env
+# Edit .env, fill in at least one LLM provider key (see field reference below)
+
+# 3. Drop in your resume
+mkdir -p resume
+# Copy your PDF resume in and name it my_cover.pdf
+# Or set RESUME_PATH in .env to point elsewhere
+
+# 4. Try it dry-run first (generates without sending)
+DRY_RUN=1 uv run main.py
+
+# 5. Once you're happy with logs/letters.jsonl, drop DRY_RUN to actually send
+uv run main.py
+```
+
+### First run: scan to log in
+
+The script starts Chrome with a dedicated profile at `./chrome_profile/` (**your daily Chrome is untouched**). The first run gets redirected to BOSS's login page, clicks "WeChat scan login" for you, and waits up to 5 minutes for you to scan the QR. Once you're logged in the cookie lives in `chrome_profile/` and **every subsequent run skips the login step**.
+
+---
+
+## `.env` field reference
+
+The repo ships a fully-commented template at [`.env.example`](.env.example). Highlights:
+
+| Field | Purpose | Required |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | DeepSeek key ([signup](https://platform.deepseek.com/api_keys)) | pick one |
+| `OPENAI_API_KEY` | OpenAI key, used by the Assistants flow ([signup](https://platform.openai.com/api-keys)) | pick one |
+| `ANTHROPIC_API_KEY` | Anthropic Claude key ([signup](https://console.anthropic.com/settings/keys)) | pick one |
+| `BOSS_USR_NAME` | Your name; signed at the bottom of every letter | no — prompted at startup if unset |
+| `BOSS_LABEL` | Job category tag, e.g. `"Backend Engineer (Shanghai)"` | no — empty = BOSS's default recommended feed |
+| `RESUME_PATH` | Path to your PDF resume | no — defaults to `./resume/my_cover.pdf` |
+| `DRY_RUN` | `1` = generate & log but don't send | no |
+| `BOSS_CHROME_PROFILE` | Custom Chrome profile dir | no — defaults to `./chrome_profile` |
+| `LETTER_MIN_LEN` / `LETTER_MAX_LEN` | Letter length bounds | no — default 30 / 800 |
+| `LETTER_LOG_PATH` | Audit log path | no — default `./logs/letters.jsonl` |
+
+**With exactly one provider key in `.env`, the script auto-selects it — no menu.** Multiple keys, you pick at startup. Zero keys, you get a list of signup URLs and an exit.
+
+---
+
+## Picking a provider
+
+| Provider | How letters are generated | Pro | Con |
+|---|---|---|---|
+| DeepSeek | RAG with local Chroma + sentence-transformers retrieval over your resume | Cheapest, quality is fine | Downloads a ~430MB embedding model on first run |
+| OpenAI | Assistants API + OpenAI-hosted Vector Stores | No local embedding model needed | Calls cost more than DeepSeek |
+| Claude | RAG (same as DeepSeek path) | Best-sounding tone | Model is expensive, but RAG keeps tokens low |
+
+---
+
+## Safety: dry-run + audit log
+
+Every generated letter is run through `validate_letter` in [`audit.py`](audit.py) before sending:
+- Length bounds (default 30–800 chars)
+- Must contain at least one CJK character
+- Blacklist substrings (`Error`, `Traceback`, `As an AI`, `` ``` ``, …) — any hit blocks the send
+
+Sent, blocked, dry-run — every attempt appends a JSONL record to `./logs/letters.jsonl` with the JD, the letter, provider, model and validation status. Use this for incident review and prompt iteration:
+
+```bash
+tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, validation_reasons, letter_len}'
+```
+
+---
+
+## Troubleshooting
+
+### Browser crashes on launch / `SessionNotCreatedException`
+Older versions used `undetected-chromedriver`, which bundles a chromedriver binary that has to match Chrome's version exactly. This repo no longer uses it — [nodriver](https://github.com/ultrafunkamsterdam/nodriver) talks CDP directly, so this whole error class is structurally impossible. If Chrome still crashes, it's almost certainly a profile lock.
+
+### Chrome opens but looks empty / "this isn't my Chrome"
+By design — the script uses a dedicated profile at `./chrome_profile/`, separate from your daily browser. This avoids leaking your extensions / sessions into automation. First run prompts a QR scan; subsequent runs reuse the cookie.
+
+If you really want to use your daily Chrome profile, **fully quit Chrome first** (menu bar → Quit Google Chrome) and:
+```bash
+BOSS_CHROME_PROFILE="$HOME/Library/Application Support/Google/Chrome" uv run main.py
+```
+
+### A blank new-tab page shows up instead of BOSS
+Used to happen when the persistent profile restored other tabs. Fixed in [commit `7dbdf37`](https://github.com/longsizhuo/BossZhiPin_Job_Search/commit/7dbdf37): the controlled page now opens in its own dedicated window.
+
+### Script hangs after "页面已稳定"
+Used to be a `tab.select(timeout=0)` block. Fixed. If you still see it, paste console output into an issue.
+
+### "❌ Resume file not found"
+Drop your PDF at `./resume/my_cover.pdf`, or set `RESUME_PATH` in `.env`.
+
+### "❌ No API key found"
+Pick one of the three providers, sign up, paste the key into `.env`. Any one will work.
+
+---
+
+## Project layout
+
+```
+.
+├── main.py                       # Entry point: env validation, provider routing
+├── models/
+│   ├── llm.py                    # Provider config + chat-completions call for DeepSeek/Claude
+│   ├── openai_assistant.py       # OpenAI Assistants flow (with Vector Store)
+│   └── prompts.py                # Cover-letter prompt template
+├── website_oper/
+│   ├── finding_jobs.py           # Browser automation (nodriver), sync facade over async impls
+│   └── write_response.py         # Per-job loop: JD → generate → validate → send/log
+├── vectorization.py              # PDF parse + sentence-transformers embed + Chroma persistence
+├── audit.py                      # Letter validation + JSONL audit log
+└── .env.example                  # Fully-commented environment template
+```
+
+---
+
+## Help wanted
+
+We're looking for contributors interested in:
+- Electron front-end UI
+- Resume-attachment support on the BOSS chat
+- Application history / auto follow-up
+- Multi-account support
+
+Issues and PRs welcome.
+
+---
+
+## Thanks
+
+Thanks to everyone who's supported this project:
 
 <p align="left">
     <a href="https://github.com/longsizhuo/BossZhiPin_Job_Search/graphs/contributors">
@@ -21,132 +163,7 @@ Thanks to all the amazing people supporting my work!
     </a>
 </p>
 
+### Forks worth a look
 
-
-## Steps to Use
-
-1. First, configure your OpenAI API (using a `.env` file or set it directly in the code).
-2. Upload your PDF resume to the `auto_job_find` folder and name it **"my_cover.pdf"**.
-3. Install all required packages.
-4. Run `write_response.py`.
-
----
-
-## About the Assistant
-
-The script will automatically create an OpenAI Assistant and generate a local `.json` file. This file is only created on the first run. On subsequent runs, the existing Assistant will be reused if the JSON file is detected.
-
----
-
-## Required Packages
-
-Dependencies are declared in `pyproject.toml` and locked in `uv.lock`. The full
-runtime set is: `openai`, `python-dotenv`, `selenium`, `pypdf`, `chromadb`,
-`sentence-transformers`, `packaging`.
-
----
-
-## About RPA
-
-Tutorial video on how to get started with [RPA](https://www.youtube.com/watch?v=65OPFmEgCbM&list=PLx4LEkEdFArgrdD_lvXe_hYBy8zM0Sp3b&index=1)
-
-Recommended Plugin: Intellibot@Selenium Library
-
----
-
-### 📺 Simple Tutorial Videos
-
-- [Bilibili](https://www.bilibili.com/video/BV1UC4y1N78v/?share_source=copy_web&vd_source=b2608434484091fcc64d4eb85233122d)
-- [YouTube](https://youtu.be/TlnytEi2lD8?si=jfcDj2MZqBptziZc)
-
----
-
-## How to Run
-
-The project uses [uv](https://docs.astral.sh/uv/) for dependency management.
-Install uv (`curl -LsSf https://astral.sh/uv/install.sh | sh`), clone the repo,
-then run from the project root:
-
-```bash
-uv sync          # create .venv and install all dependencies
-uv run main.py   # launch the CLI
-```
-
-### Run with Assistant Mode (OpenAI Assistants API)
-
-1. Open the `.env` file and configure `OPENAI_API_KEY`.
-2. Upload your resume PDF to the `resume` folder, named `my_cover.pdf`.
-3. `uv run main.py` and pick option `2`.
-
-Note: This mode does not support custom APIs but runs faster.
-
-### Run with DeepSeek / Claude (RAG over your resume)
-
-1. Configure `DEEPSEEK_API_KEY` (or `ANTHROPIC_API_KEY` for Claude) in `.env`.
-2. Put your resume PDF in the `resume` folder as `my_cover.pdf`.
-3. `uv run main.py` and pick option `1` (DeepSeek) or `3` (Claude).
-
-Both providers are reached through the OpenAI-compatible endpoint, so no extra
-SDK is required beyond `openai`.
-
-### Safety: dry-run and audit log
-
-Before sending anything to BOSS, every generated letter is validated against
-length bounds and a blacklist of error-string / refusal phrases. Failures are
-logged but never sent.
-
-Every attempt — sent, blocked, or dry-run — is appended to
-`./logs/letters.jsonl` with the job description, the letter, the provider and
-the model. Use this for prompt iteration and incident review:
-
-```bash
-tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, letter_len}'
-```
-
-To preview generation without sending anything to BOSS, run with `DRY_RUN=1`:
-
-```bash
-DRY_RUN=1 uv run main.py
-```
-
-The Selenium flow still browses and scrapes job descriptions, but skips the
-"立即沟通" click. Tune the prompt by reviewing `logs/letters.jsonl` afterwards.
-
-### Run with ChatGPT-4 and Above
-
-If you're using newer ChatGPT models, you may encounter an error if you're not using version `v1.1.1`:
-
-```
-Error code: 400 - {'error': {'message': "The requested model 'gpt-4o-mini' cannot be used with the Assistants API in v1. Follow the migration guide to upgrade to v2: https://platform.openai.com/docs/assistants/migration."}}
-```
-
-#### Solution:
-1. Upgrade OpenAI package:
-```shell
-pip install --upgrade openai
-```
-2. Modify the `create_assistant` function structure. See the [migration guide](https://platform.openai.com/docs/assistants/migration) for details.
-
-> Alternatively, manually create an assistant on the [OpenAI Platform](https://platform.openai.com/assistants/), then copy its code into your `assistant.json` file:
-```json
-{"assistant_id": "asst_token"}
-```
-
----
-
-## Alternative JavaScript Version
-
-Some kind contributors have built easier-to-use versions based on JavaScript. Although these versions may not support Assistant-based retrieval and may require manual preprocessing of resumes, they are still very helpful.
-
-GitHub link:  
-[https://github.com/noBaldAaa/find-job](https://github.com/noBaldAaa/find-job)
-
----
-
-## Azure-based Version
-
-An alternative version using Azure's OpenAI API is available here:
-[https://github.com/LouisCaixuran/auto_job_find_azure](https://github.com/LouisCaixuran/auto_job_find_azure)
-
-
-
+- [noBaldAaa/find-job](https://github.com/noBaldAaa/find-job) — simpler JS port
+- [LouisCaixuran/auto_job_find_azure](https://github.com/LouisCaixuran/auto_job_find_azure) — Azure OpenAI version
