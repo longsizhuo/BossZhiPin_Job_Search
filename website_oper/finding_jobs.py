@@ -64,20 +64,10 @@ async def _open_browser_impl(url: str) -> None:
     config.user_data_dir = CHROME_PROFILE_DIR
     config.headless = False
     _browser = await uc.start(config=config)
-    _tab = await _browser.get(url)
 
-    # Chrome 用持久化 profile 启动时会恢复上次的所有 tab，
-    # 我们控制的 tab 会被淹没在后面。把其它 tab 关掉只留控制的这一个。
-    all_tabs = list(_browser.tabs)
-    print(f"启动时一共 {len(all_tabs)} 个 tab，关掉非脚本控制的")
-    for t in all_tabs:
-        if t is _tab:
-            continue
-        try:
-            await t.close()
-        except Exception as e:
-            print(f"关 tab {getattr(t, 'url', '?')} 失败：{e}")
-
+    # 持久化 profile 启动时 Chrome 会把上次的 tab 都恢复出来；脚本控制的 tab
+    # 直接放到一个独立的新窗口里，跟历史窗口井水不犯河水，新窗口默认抢焦。
+    _tab = await _browser.get(url, new_window=True)
     try:
         await _tab.activate()
         await _tab.bring_to_front()
