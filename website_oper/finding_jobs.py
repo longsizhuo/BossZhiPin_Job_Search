@@ -65,11 +65,25 @@ async def _open_browser_impl(url: str) -> None:
     config.headless = False
     _browser = await uc.start(config=config)
     _tab = await _browser.get(url)
-    # Chrome 恢复会话时常把"新标签页"压在前台，我们要把脚本控制的这个 tab 拉上来。
+
+    # Chrome 用持久化 profile 启动时会恢复上次的所有 tab，
+    # 我们控制的 tab 会被淹没在后面。把其它 tab 关掉只留控制的这一个。
+    all_tabs = list(_browser.tabs)
+    print(f"启动时一共 {len(all_tabs)} 个 tab，关掉非脚本控制的")
+    for t in all_tabs:
+        if t is _tab:
+            continue
+        try:
+            await t.close()
+        except Exception as e:
+            print(f"关 tab {getattr(t, 'url', '?')} 失败：{e}")
+
     try:
+        await _tab.activate()
         await _tab.bring_to_front()
     except Exception as e:
-        print(f"bring_to_front 失败（{e}），不影响后续操作")
+        print(f"激活控制 tab 失败（{e}），不影响后续操作")
+
     print(f"页面加载中... 当前URL: {_tab.url}")
     stable_url = await _wait_url_stable(stable_for=2.0, timeout=30)
     print(f"页面已稳定，当前URL: {stable_url}")
