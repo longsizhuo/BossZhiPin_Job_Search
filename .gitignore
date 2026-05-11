@@ -40,4 +40,7 @@
 *.pyc
 .idea/
 .vs/
+.venv/
+/vectorstores/
+/logs/
 

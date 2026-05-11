@@ -4,8 +4,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
-from models.langchain_functions import generate_letter
+from models.llm import PROVIDERS, generate_letter
 
+from audit import log_attempt, validate_letter
 from website_oper import finding_jobs
 
 
@@ -103,7 +104,25 @@ def send_response_and_go_back(driver, response):
     time.sleep(3)
 
 
-def send_job_descriptions_to_chat(usr_name, url, browser_type, label, models:str, client_openAI = None, assistant_id=None, vectorstore=None):
+def _resolve_model_name(models: str, assistant_id: str | None) -> str:
+    if models in PROVIDERS:
+        return PROVIDERS[models]["default_model"] or ""
+    if models == "chatgpt":
+        return f"assistant:{assistant_id}" if assistant_id else "assistant"
+    return models
+
+
+def send_job_descriptions_to_chat(
+    usr_name,
+    url,
+    browser_type,
+    label,
+    models: str,
+    client_openAI=None,
+    assistant_id=None,
+    vectorstore=None,
+    dry_run: bool = False,
+):
     # 开始浏览并获取工作描述
     finding_jobs.open_browser_with_options(url, browser_type)
     finding_jobs.log_in()
@@ -122,28 +141,63 @@ def send_job_descriptions_to_chat(usr_name, url, browser_type, label, models:str
                 element = driver.find_element(By.CSS_SELECTOR, '.op-btn.op-btn-chat').text
                 print(element)
                 if element == '立即沟通':
-                    # 发送描述到聊天并打印响应
-                    if models == "deepseek":
-                        response = generate_letter(usr_name, vectorstore, job_description)
+                    if models in ("deepseek", "claude"):
+                        response = generate_letter(usr_name, vectorstore, job_description, model=models)
                     else:
                         response = chat(user_input=job_description, client=client_openAI, assistant_id=assistant_id)
-                    print(response)
-                    time.sleep(1)
-                    # 点击沟通按钮
 
-                    contact_button = driver.find_element(By.XPATH,
-                                                         "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[1]/div[2]/a[2]")
+                    validation = validate_letter(response)
+                    resolved_model = _resolve_model_name(models, assistant_id)
 
-                    contact_button.click()
+                    if not validation.ok:
+                        print(f"[BLOCKED] {validation.reasons} — preview: {response[:80]!r}")
+                        log_attempt(
+                            provider=models,
+                            model=resolved_model,
+                            job_description=job_description,
+                            letter=response,
+                            validation=validation,
+                            dry_run=dry_run,
+                            sent=False,
+                        )
+                    elif dry_run:
+                        print(f"[DRY-RUN] Generated letter ({len(response)} chars). Not sending.")
+                        print(f"--- letter ---\n{response}\n--------------")
+                        log_attempt(
+                            provider=models,
+                            model=resolved_model,
+                            job_description=job_description,
+                            letter=response,
+                            validation=validation,
+                            dry_run=True,
+                            sent=False,
+                        )
+                    else:
+                        print(response)
+                        time.sleep(1)
+                        # 点击沟通按钮
+                        contact_button = driver.find_element(
+                            By.XPATH,
+                            "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[1]/div[2]/a[2]",
+                        )
+                        contact_button.click()
 
-                    # 等待回复框出现
-                    xpath_locator_chat_box = "//*[@id='chat-input']"
-                    chat_box = WebDriverWait(driver, 50).until(
-                        EC.presence_of_element_located((By.XPATH, xpath_locator_chat_box))
-                    )
+                        # 等待回复框出现
+                        xpath_locator_chat_box = "//*[@id='chat-input']"
+                        WebDriverWait(driver, 50).until(
+                            EC.presence_of_element_located((By.XPATH, xpath_locator_chat_box))
+                        )
 
-                    # 调用函数发送响应
-                    send_response_and_go_back(driver, response)
+                        send_response_and_go_back(driver, response)
+                        log_attempt(
+                            provider=models,
+                            model=resolved_model,
+                            job_description=job_description,
+                            letter=response,
+                            validation=validation,
+                            dry_run=False,
+                            sent=True,
+                        )
 
             # 等待一定时间后处理下一个工作描述
             time.sleep(3)

@@ -1,0 +1,22 @@
+[project]
+name = "boss-zhipin-job-search"
+version = "0.3.0"
+description = "Auto-apply for jobs on Boss ZhiPin with LLM-generated cover letters."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "longsizhuo", email = "longsizhuo@gmail.com" },
+]
+dependencies = [
+    "openai>=1.70.0",
+    "packaging>=24.2",
+    "python-dotenv>=1.1.0",
+    "selenium>=4.30.0",
+    "pypdf>=5.4.0",
+    "chromadb>=0.6.3",
+    "sentence-transformers>=3.0.0",
+]
+
+[tool.uv]
+package = false

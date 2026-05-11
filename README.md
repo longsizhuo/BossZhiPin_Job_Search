@@ -40,12 +40,9 @@ The script will automatically create an OpenAI Assistant and generate a local `.
 
 ## Required Packages
 
-- `python-dotenv`  
-- `openai`  
-- `selenium`  
-- `robotframework`  
-- `robotframework-seleniumlibrary`  
-- `robotframework-pythonlibcore`  
+Dependencies are declared in `pyproject.toml` and locked in `uv.lock`. The full
+runtime set is: `openai`, `python-dotenv`, `selenium`, `pypdf`, `chromadb`,
+`sentence-transformers`, `packaging`.
 
 ---
 
@@ -66,24 +63,54 @@ Recommended Plugin: Intellibot@Selenium Library
 
 ## How to Run
 
-Clone the project locally, then run the following in the root directory:
+The project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+Install uv (`curl -LsSf https://astral.sh/uv/install.sh | sh`), clone the repo,
+then run from the project root:
+
 ```bash
-pip install -r requirements.txt
+uv sync          # create .venv and install all dependencies
+uv run main.py   # launch the CLI
 ```
 
-### Run with Assistant Mode
+### Run with Assistant Mode (OpenAI Assistants API)
 
-1. Open the `.env` file and configure your OpenAI API key.
-2. Upload your resume PDF to the `auto_job_find` folder, named `my_cover.pdf`.
-3. Run `write_response.py`.
+1. Open the `.env` file and configure `OPENAI_API_KEY`.
+2. Upload your resume PDF to the `resume` folder, named `my_cover.pdf`.
+3. `uv run main.py` and pick option `2`.
 
 Note: This mode does not support custom APIs but runs faster.
 
-### Run with Langchain Mode
+### Run with DeepSeek / Claude (RAG over your resume)
 
-1. Again, configure your OpenAI API key and your custom API endpoint in the `.env` file.
-2. Put your resume in the `resume` folder.
-3. Run `write_response.py`.
+1. Configure `DEEPSEEK_API_KEY` (or `ANTHROPIC_API_KEY` for Claude) in `.env`.
+2. Put your resume PDF in the `resume` folder as `my_cover.pdf`.
+3. `uv run main.py` and pick option `1` (DeepSeek) or `3` (Claude).
+
+Both providers are reached through the OpenAI-compatible endpoint, so no extra
+SDK is required beyond `openai`.
+
+### Safety: dry-run and audit log
+
+Before sending anything to BOSS, every generated letter is validated against
+length bounds and a blacklist of error-string / refusal phrases. Failures are
+logged but never sent.
+
+Every attempt — sent, blocked, or dry-run — is appended to
+`./logs/letters.jsonl` with the job description, the letter, the provider and
+the model. Use this for prompt iteration and incident review:
+
+```bash
+tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, letter_len}'
+```
+
+To preview generation without sending anything to BOSS, run with `DRY_RUN=1`:
+
+```bash
+DRY_RUN=1 uv run main.py
+```
+
+The Selenium flow still browses and scrapes job descriptions, but skips the
+"立即沟通" click. Tune the prompt by reviewing `logs/letters.jsonl` afterwards.
 
 ### Run with ChatGPT-4 and Above
 
