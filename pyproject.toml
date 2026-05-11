@@ -12,10 +12,10 @@ dependencies = [
     "openai>=1.70.0",
     "packaging>=24.2",
     "python-dotenv>=1.1.0",
-    "selenium>=4.30.0",
     "pypdf>=5.4.0",
     "chromadb>=0.6.3",
     "sentence-transformers>=3.0.0",
+    "nodriver>=0.48.1",
 ]
 
 [tool.uv]

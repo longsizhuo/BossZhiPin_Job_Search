@@ -1,9 +1,5 @@
 import json
 import time
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver import Keys
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
 from models.llm import PROVIDERS, generate_letter
 
 from audit import log_attempt, validate_letter
@@ -78,30 +74,10 @@ def chat(user_input, assistant_id, client, thread_id=None):
         return error_response
 
 
-def send_response_to_chat_box(driver, response):
-    # 定位聊天输入框
-    chat_box = driver.find_element(By.XPATH, "//*[@id='chat-input']")
-
-    # 清除输入框中可能存在的任何文本
-    chat_box.clear()
-
-    # 将响应粘贴到输入框
-    chat_box.send_keys(response)
-    time.sleep(3)
-
-    # 模拟按下回车键来发送消息
-    chat_box.send_keys(Keys.ENTER)
-    time.sleep(1)
-
-
-def send_response_and_go_back(driver, response):
-    # 调用函数发送响应
-    send_response_to_chat_box(driver, response)
-
+def send_response_and_go_back(response):
+    finding_jobs.send_chat_message(response)
     time.sleep(10)
-    # 返回到上一个页面
-    driver.back()
-    time.sleep(3)
+    finding_jobs.navigate_back()
 
 
 def _resolve_model_name(models: str, assistant_id: str | None) -> str:
@@ -127,20 +103,15 @@ def send_job_descriptions_to_chat(
     finding_jobs.open_browser_with_options(url, browser_type)
     finding_jobs.log_in()
 
-    job_index = 1  # 开始的索引
+    job_index = 1
     while True:
         try:
-            # 获取 driver 实例
-            driver = finding_jobs.get_driver()
-
-            # 更改下拉列表选项
-            finding_jobs.select_dropdown_option(driver, label)
-            # 调用 finding_jobs.py 中的函数来获取描述
+            finding_jobs.select_dropdown_option(None, label)
             job_description = finding_jobs.get_job_description_by_index(job_index)
             if job_description:
-                element = driver.find_element(By.CSS_SELECTOR, '.op-btn.op-btn-chat').text
+                element = finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 print(element)
-                if element == '立即沟通':
+                if element == "立即沟通":
                     if models in ("deepseek", "claude"):
                         response = generate_letter(usr_name, vectorstore, job_description, model=models)
                     else:
@@ -175,20 +146,10 @@ def send_job_descriptions_to_chat(
                     else:
                         print(response)
                         time.sleep(1)
-                        # 点击沟通按钮
-                        contact_button = driver.find_element(
-                            By.XPATH,
-                            "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[1]/div[2]/a[2]",
-                        )
-                        contact_button.click()
-
-                        # 等待回复框出现
-                        xpath_locator_chat_box = "//*[@id='chat-input']"
-                        WebDriverWait(driver, 50).until(
-                            EC.presence_of_element_located((By.XPATH, xpath_locator_chat_box))
-                        )
-
-                        send_response_and_go_back(driver, response)
+                        contact_xpath = "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[1]/div[2]/a[2]"
+                        finding_jobs.click_by_xpath(contact_xpath, timeout=10)
+                        finding_jobs.wait_for_css("#chat-input", timeout=50)
+                        send_response_and_go_back(response)
                         log_attempt(
                             provider=models,
                             model=resolved_model,
@@ -199,7 +160,6 @@ def send_job_descriptions_to_chat(
                             sent=True,
                         )
 
-            # 等待一定时间后处理下一个工作描述
             time.sleep(3)
             # job_index += 1
 
