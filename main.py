@@ -101,7 +101,13 @@ if __name__ == "__main__":
     elif provider == "chatgpt":
         chatgpt_model = os.getenv("CHATGPT_MODEL", "").strip() or "gpt-4o"
         print(f"OpenAI 模型：{chatgpt_model}（可用 CHATGPT_MODEL 环境变量覆盖）")
-        client_openAI = OpenAI(api_key=OPENAI_API_KEY)
+        openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+        if openai_base_url:
+            print(f"OpenAI base_url 覆盖：{openai_base_url}")
+        client_openAI = OpenAI(
+            api_key=OPENAI_API_KEY,
+            base_url=openai_base_url or None,
+        )
         assistant_id = create_assistant(
             usr_name, chatgpt_model, client_openAI, resume_path=resume_path
         )
