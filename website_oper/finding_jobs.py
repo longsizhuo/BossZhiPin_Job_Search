@@ -1,4 +1,11 @@
+import os
 import time
+
+# 让 Selenium 连接 ChromeDriver 时绕过系统代理
+os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
+
+import chromedriver_autoinstaller
+chromedriver_autoinstaller.install()
 
 from selenium import webdriver
 from selenium.common import NoSuchElementException
@@ -20,10 +27,18 @@ def open_browser_with_options(url, browser):
     global driver
     options = Options()
     options.add_experimental_option("detach", True)
+    # 反自动化检测
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+    options.add_argument("--disable-blink-features=AutomationControlled")
 
     if browser == "chrome":
         driver = webdriver.Chrome(options=options)
         driver.maximize_window()
+        # 隐藏 webdriver 标志
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        })
     elif browser == "edge":
         driver = webdriver.Edge()
         driver.maximize_window()
@@ -34,39 +49,56 @@ def open_browser_with_options(url, browser):
         raise ValueError("Browser type not supported")
 
     driver.get(url)
+    print(f"页面加载中... 当前URL: {driver.current_url}")
 
-    # 等待直到页面包含特定的 XPath 元素
-    xpath_locator = "//*[@id='header']/div[1]/div[3]/div/a"
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, xpath_locator))
-    )
+    # 等待页面加载完成
+    try:
+        WebDriverWait(driver, 30).until(
+            lambda d: d.title and len(d.title) > 0
+        )
+        print(f"页面已加载，标题: {driver.title}")
+    except Exception:
+        print(f"等待页面超时，当前URL: {driver.current_url}")
+        raise
 
 
 def log_in():
     global driver
 
-    # 点击按钮
-    login_button = driver.find_element(By.XPATH, "//*[@id='header']/div[1]/div[3]/div/a")
+    # 用文字内容找到"登录/注册"按钮
+    try:
+        login_button = WebDriverWait(driver, 15).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "登录/注册"))
+        )
+    except Exception:
+        # 备选：部分匹配
+        login_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "登录"))
+        )
     login_button.click()
+    print("已点击登录按钮，等待登录方式选择...")
+    time.sleep(2)
 
-    # 等待微信登录按钮出现
-    xpath_locator_wechat_login = "//*[@id='wrap']/div/div[2]/div[2]/div[2]/div[1]/div[4]/a"
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, xpath_locator_wechat_login))
-    )
+    # 找到微信登录按钮（用文字匹配）
+    try:
+        wechat_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "微信"))
+        )
+        wechat_button.click()
+        print("已选择微信登录，请扫码...")
+    except Exception:
+        print("未找到微信登录按钮，请手动选择登录方式...")
 
-    wechat_button = driver.find_element(By.XPATH, "//*[@id='wrap']/div/div[2]/div[2]/div[2]/div[1]/div[4]/a")
-    wechat_button.click()
-
-    xpath_locator_wechat_logo = "//*[@id='wrap']/div/div[2]/div[2]/div[1]/div[2]/div[1]/img"
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, xpath_locator_wechat_logo))
-    )
-
-    xpath_locator_login_success = "//*[@id='header']/div[1]/div[3]/ul/li[2]/a"
-    WebDriverWait(driver, 60).until(
-        EC.presence_of_element_located((By.XPATH, xpath_locator_login_success))
-    )
+    # 等待用户扫码登录成功（最多等 120 秒）
+    print("等待扫码登录... (最多等待120秒)")
+    try:
+        WebDriverWait(driver, 120).until(
+            lambda d: "登录" not in d.page_source[:5000] or
+                      d.find_elements(By.CSS_SELECTOR, '.user-nav, .nav-userinfo, [ka="header-username"]')
+        )
+        print("登录成功！")
+    except Exception:
+        print("登录超时，请确认是否已扫码登录")
 
 
 def get_job_description():
