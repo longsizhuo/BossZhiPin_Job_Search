@@ -10,9 +10,6 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
 
-# Init OpenAI Client
-client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-
 
 # Create or load assistant
 def create_assistant(usr_name, chatgpt_model, client):
