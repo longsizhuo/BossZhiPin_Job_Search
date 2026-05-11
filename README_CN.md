@@ -4,11 +4,12 @@
 原作者已经暂停更新该项目，现在由我和小伙伴们维护该项目，力及让所有人都可以简单地运行。
 
 现在我们已经完成了：
-1. 加入更多的api，如deepseek，langchain等
+1. 加入更多的api，如deepseek、Claude（通过 OpenAI 兼容层）
 2. 优化了代码结构，使得代码更加易于理解
 3. 加入了更多的注释，方便大家理解代码
 4. 加入了更多的错误处理，使得代码更加稳定
 5. 加入了更多的功能，如chatgpt4及以上版本的支持
+6. 迁移到 `uv` 管理依赖，并移除了 `langchain` 全家桶，直接调用 `openai` SDK + `chromadb` + `sentence-transformers`
 
 我们将要完成的事情：
 1. 加入Electron，开发出前端界面
@@ -55,14 +56,12 @@ Plugin: Intellibot@Selenium Library
 
 ## 使用到的包
 
-- `python-dotenv`
-- `openai`
-- `selenium`
-- `robotframework`
-- `robotframework-seleniumlibrary`
-- `robotframework-pythonlibcore`
-- `faiss-cpu不支持3.12（faiss-gpu不清楚）。建议大家用3.11及以下版本的python运行脚本。` from @[huanmit](https://github.com/huanmit)
-- 取消FAISS， 更新为`Chroma`
+依赖统一由 `pyproject.toml` 声明、`uv.lock` 锁定。运行时所需的包：
+`openai`、`python-dotenv`、`selenium`、`pypdf`、`chromadb`、
+`sentence-transformers`、`packaging`。
+
+要求 Python `>=3.11`。`langchain` 已完全移除，DeepSeek / Claude 都通过
+`openai` SDK 加自定义 `base_url` 调用。
 ## About RPA
 
 tutorial video about how to learn [rpa](https://www.youtube.com/watch?v=65OPFmEgCbM&list=PLx4LEkEdFArgrdD_lvXe_hYBy8zM0Sp3b&index=1)
@@ -76,21 +75,29 @@ Plugin: Intellibot@Selenium Library
 [油管链接](https://youtu.be/TlnytEi2lD8?si=jfcDj2MZqBptziZc)
 
 ## 运行方式
-先将该项目clone到本地，然后在项目根目录下执行
+
+项目使用 [uv](https://docs.astral.sh/uv/) 管理依赖。先安装 uv
+（`curl -LsSf https://astral.sh/uv/install.sh | sh`），clone 项目，
+然后在项目根目录下执行：
+
 ```bash
-pip install -r requirements.txt
+uv sync          # 创建 .venv 并安装依赖
+uv run main.py   # 启动 CLI
 ```
 
-### assistant方式运行
-打开.env文件，在里面配置好OpenAI的API key
-随后将pdf简历上传到文件夹auto_job_find里，命名为“my_cover".随后执行write_response.py即可
-这种方式不支持使用自定义api，优势是执行速度更快
-如果需要使用自定义api，请使用下面的方式运行
+### Assistant 方式运行（OpenAI Assistants API）
+1. 打开 `.env` 配置 `OPENAI_API_KEY`。
+2. 将 pdf 简历放到 `resume` 文件夹，命名为 `my_cover.pdf`。
+3. `uv run main.py`，选项选 `2`。
 
-### langchain方式
-同样打开.env文件，在里面配置好OpenAI的API key和你想要请求的api地址
-随后将pdf简历放到文件夹resume里
-最后执行write_response.py即可
+这种方式不支持自定义 api，但执行速度更快。
+
+### DeepSeek / Claude 方式（基于简历向量库的 RAG）
+1. 在 `.env` 配置 `DEEPSEEK_API_KEY`（或者使用 Claude 的话 `ANTHROPIC_API_KEY`）。
+2. 将 pdf 简历放到 `resume` 文件夹，命名为 `my_cover.pdf`。
+3. `uv run main.py`，选项选 `1`（DeepSeek）或 `3`（Claude）。
+
+两家服务都走 OpenAI 兼容端点，所以不需要额外 SDK。
 
 
 ### chatgpt4 及以上运行方式

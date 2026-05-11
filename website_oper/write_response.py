@@ -4,7 +4,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
-from models.langchain_functions import generate_letter
+from models.llm import generate_letter
 
 from website_oper import finding_jobs
 
@@ -123,8 +123,8 @@ def send_job_descriptions_to_chat(usr_name, url, browser_type, label, models:str
                 print(element)
                 if element == '立即沟通':
                     # 发送描述到聊天并打印响应
-                    if models == "deepseek":
-                        response = generate_letter(usr_name, vectorstore, job_description)
+                    if models in ("deepseek", "claude"):
+                        response = generate_letter(usr_name, vectorstore, job_description, model=models)
                     else:
                         response = chat(user_input=job_description, client=client_openAI, assistant_id=assistant_id)
                     print(response)

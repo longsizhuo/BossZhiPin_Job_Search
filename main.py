@@ -41,5 +41,6 @@ if __name__ == '__main__':
         assistant_id = create_assistant(usr_name, chatgpt_model ,client_openAI)
         send_job_descriptions_to_chat(usr_name, url, browser_type, label, "chatgpt", client_openAI=client_openAI, assistant_id=assistant_id)
     elif model == "3":
-        # 暂时弃用，以后开发
-        pass
+        # Claude via OpenAI-compatible endpoint
+        vectorstore = embed_pdf("resume/my_cover.pdf", "./vectorstores")
+        send_job_descriptions_to_chat(usr_name, url, browser_type, label, "claude", vectorstore=vectorstore)
