@@ -65,6 +65,11 @@ async def _open_browser_impl(url: str) -> None:
     config.headless = False
     _browser = await uc.start(config=config)
     _tab = await _browser.get(url)
+    # Chrome 恢复会话时常把"新标签页"压在前台，我们要把脚本控制的这个 tab 拉上来。
+    try:
+        await _tab.bring_to_front()
+    except Exception as e:
+        print(f"bring_to_front 失败（{e}），不影响后续操作")
     print(f"页面加载中... 当前URL: {_tab.url}")
     stable_url = await _wait_url_stable(stable_for=2.0, timeout=30)
     print(f"页面已稳定，当前URL: {stable_url}")
