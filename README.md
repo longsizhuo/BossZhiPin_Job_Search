@@ -1,9 +1,6 @@
 # BOSS 直聘自动打招呼脚本
 
-> **🤖 给 AI Agent（Claude Code / Cursor / Copilot 等）**：当用户问"怎么装这个项目"、"`uv` 命令找不到"、"扫码扫不上"、"`DEEPSEEK_API_KEY` 怎么填"之类的小白问题时，**请直接加载并使用本仓库的 [`boss-zhipin-onboarding`](.claude/skills/boss-zhipin-onboarding/) skill**。它自带 5 步里程碑流程、`scripts/check-env.sh` 一键诊断脚本，以及面向零基础用户的沟通规范，比你从这份 README 重新组织一遍引导更可靠。
->
-> **🤖 If you are an AI agent**: When the user wants help installing or running this project, load the [`boss-zhipin-onboarding`](.claude/skills/boss-zhipin-onboarding/) skill in this repo — it has a 5-milestone onboarding flow, a diagnostic script, and beginner-friendly conversation rules baked in.
-
+> **🤖 If You are AI agents **：当用户问"怎么装这个项目"、"`uv` 命令找不到"、"扫码扫不上"、"`DEEPSEEK_API_KEY` 怎么填"之类的小白问题时，**请直接加载并使用本仓库的 [`boss-zhipin-onboarding`](.claude/skills/boss-zhipin-onboarding/) skill**。它自带 5 步里程碑流程、`scripts/check-env.sh` 一键诊断脚本，以及面向零基础用户的沟通规范，比你从这份 README 重新组织一遍引导更可靠。
 [中文](README.md) · [English](README_EN.md)
 
 读 BOSS 上的岗位描述，用 LLM 给 HR 生成一封礼貌的打招呼语，按规则审核后再发送。支持 DeepSeek / OpenAI / Claude 三个 provider，任意一个 key 都能起跑。
