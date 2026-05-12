@@ -45,4 +45,7 @@
 /logs/
 /chrome_profile/
 /assistant.json
+# skill-creator eval workspaces（每次跑 skill eval 都会产出，不需要提交）
+.claude/skills/**/workspace/
+.claude/skills/*-workspace/
 
