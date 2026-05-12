@@ -28,6 +28,7 @@ import time
 
 from audit import log_attempt, validate_letter
 from audit.telemetry import record_llm_call
+from models.job_matcher import should_apply
 from models.llm import PROVIDERS, generate_letter
 from website_oper import finding_jobs
 
@@ -176,6 +177,10 @@ async def send_job_descriptions_to_chat(
     assistant_id=None,
     vectorstore=None,
     dry_run: bool = False,
+    resume_keywords: list[str] | None = None,
+    resume_text: str | None = None,
+    min_keyword_match: int = 2,
+    min_llm_score: int = 70,
 ) -> None:
     """主循环（async）。
 
@@ -209,6 +214,33 @@ async def send_job_descriptions_to_chat(
                 element = await finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 log.info("chat 按钮文字: %r", element)
                 if element == "立即沟通":
+                    # ====== 两层过滤：关键词匹配 + LLM 评分 ======
+                    if resume_keywords and resume_text:
+                        apply, details = await asyncio.to_thread(
+                            should_apply,
+                            job_description, resume_keywords, resume_text,
+                            min_keyword_match, min_llm_score,
+                        )
+                        if not apply:
+                            stage = details.get("stage", "unknown")
+                            if stage == "keyword":
+                                log.info(
+                                    "⏭️ [跳过 #%d] 关键词匹配不足: 命中 %s - %s",
+                                    job_index, details["matched_keywords"], details["reason"],
+                                )
+                            else:
+                                log.info(
+                                    "⏭️ [跳过 #%d] LLM 评分 %s/%s: %s",
+                                    job_index, details["score"], details["threshold"], details["reason"],
+                                )
+                            job_index += 1
+                            await asyncio.sleep(3)
+                            continue
+                        log.info("✅ [匹配 #%d] 关键词命中: %s", job_index, details["matched_keywords"])
+                        if details.get("score"):
+                            log.info("   LLM 评分: %s/100 - %s", details["score"], details["reason"])
+                    # ====== 过滤结束 ======
+
                     # LLM 调用是同步阻塞的 HTTP 请求，扔到 thread pool 跑
                     # 避免阻塞事件循环 → 卡死 nodriver CDP heartbeat
                     if models in ("deepseek", "claude"):
