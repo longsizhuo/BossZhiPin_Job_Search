@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -134,11 +135,11 @@ def _telemetry_for_run(run_status, t0: float, *, ok: bool, letter_len: int = 0, 
     )
 
 
-def send_response_and_go_back(response: str) -> None:
+async def send_response_and_go_back(response: str) -> None:
     """在 BOSS 沟通页发送 ``response`` 然后退回到列表。"""
-    finding_jobs.send_chat_message(response)
-    time.sleep(10)
-    finding_jobs.navigate_back()
+    await finding_jobs.send_chat_message(response)
+    await asyncio.sleep(10)
+    await finding_jobs.navigate_back()
 
 
 def _resolve_model_name(models: str, assistant_id: str | None) -> str:
@@ -165,7 +166,7 @@ def _resolve_model_name(models: str, assistant_id: str | None) -> str:
     return models
 
 
-def send_job_descriptions_to_chat(
+async def send_job_descriptions_to_chat(
     usr_name: str,
     url: str,
     browser_type: str,
@@ -176,16 +177,20 @@ def send_job_descriptions_to_chat(
     vectorstore=None,
     dry_run: bool = False,
 ) -> None:
-    """主循环。
+    """主循环（async）。
 
     ``models`` 是 provider 名（"deepseek" / "claude" / "chatgpt"），不是具体
     LLM 名。``label`` 为空字符串时跳过下拉筛选，沿用 BOSS 默认推荐 feed。
 
     ``dry_run=True`` 时不点"立即沟通"，但 LLM 仍会调、招呼语仍会校验和写日志，
     用来调 prompt。
+
+    整段必须包在 ``uc.loop().run_until_complete(...)`` 里一次性跑完，
+    不能拆成多个 ``run_until_complete`` —— nodriver CDP 在事件循环停顿期间
+    会进入半死状态，下次 evaluate 直接 hang。详见模块 docstring。
     """
-    finding_jobs.open_browser_with_options(url, browser_type)
-    finding_jobs.log_in()
+    await finding_jobs.open_browser_with_options(url, browser_type)
+    await finding_jobs.log_in()
 
     job_index = 1
     iteration = 0
@@ -193,23 +198,27 @@ def send_job_descriptions_to_chat(
     # 推荐 feed 末尾、或者某条岗位卡 DOM 没渲染好，都会让 get_job_description
     # 返回 None。连续 N 次拿不到就当列表到底了停掉，否则 job_index 会无限涨。
     MAX_CONSECUTIVE_MISSES = 5
-    finding_jobs.select_dropdown_option(label)
+    await finding_jobs.select_dropdown_option(label)
     while True:
         try:
             iteration += 1
             log.info("=== 第 %d 轮: 处理 job_index=%d ===", iteration, job_index)
-            job_description = finding_jobs.get_job_description_by_index(job_index)
+            job_description = await finding_jobs.get_job_description_by_index(job_index)
             if job_description:
                 consecutive_misses = 0
-                element = finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
+                element = await finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 log.info("chat 按钮文字: %r", element)
                 if element == "立即沟通":
+                    # LLM 调用是同步阻塞的 HTTP 请求，扔到 thread pool 跑
+                    # 避免阻塞事件循环 → 卡死 nodriver CDP heartbeat
                     if models in ("deepseek", "claude"):
-                        response = generate_letter(
-                            usr_name, vectorstore, job_description, model=models
+                        response = await asyncio.to_thread(
+                            generate_letter,
+                            usr_name, vectorstore, job_description, model=models,
                         )
                     else:
-                        response = chat(
+                        response = await asyncio.to_thread(
+                            chat,
                             user_input=job_description,
                             client=client_openAI,
                             assistant_id=assistant_id,
@@ -241,13 +250,13 @@ def send_job_descriptions_to_chat(
                         )
                     else:
                         log.info("发送招呼语：%s", response)
-                        time.sleep(1)
+                        await asyncio.sleep(1)
                         # 旧版绝对 xpath 在 2026-05 BOSS 改版后失效，
                         # 改成 class 匹配，跟 get_text_by_css(".op-btn.op-btn-chat") 配套。
                         contact_xpath = "//a[contains(@class, 'op-btn-chat')]"
-                        finding_jobs.click_by_xpath(contact_xpath, timeout=10)
-                        finding_jobs.wait_for_css("#chat-input", timeout=50)
-                        send_response_and_go_back(response)
+                        await finding_jobs.click_by_xpath(contact_xpath, timeout=10)
+                        await finding_jobs.wait_for_css("#chat-input", timeout=50)
+                        await send_response_and_go_back(response)
                         log_attempt(
                             provider=models, model=resolved_model,
                             job_description=job_description, letter=response,
@@ -266,7 +275,7 @@ def send_job_descriptions_to_chat(
                     )
                     break
 
-            time.sleep(3)
+            await asyncio.sleep(3)
             job_index += 1
 
         except Exception as e:

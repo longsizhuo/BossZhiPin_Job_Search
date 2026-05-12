@@ -16,6 +16,7 @@ import os
 import sys
 from pathlib import Path
 
+import nodriver as uc
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -115,12 +116,15 @@ if __name__ == "__main__":
     url = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-recommend"
     browser_type = "chrome"
 
+    # send_job_descriptions_to_chat 是 async 的（整段必须跑在同一个事件循环里，
+    # 否则 nodriver CDP 会在 run_until_complete 之间进入半死态导致 evaluate hang）。
+    # 这里用 ``uc.loop().run_until_complete(...)`` 一次性跑完。
     if provider == "deepseek":
         vectorstore = embed_pdf(resume_path, "./vectorstores")
-        send_job_descriptions_to_chat(
+        uc.loop().run_until_complete(send_job_descriptions_to_chat(
             usr_name, url, browser_type, label, "deepseek",
             vectorstore=vectorstore, dry_run=dry_run,
-        )
+        ))
     elif provider == "chatgpt":
         chatgpt_model = os.getenv("CHATGPT_MODEL", "").strip() or "gpt-4o"
         print(f"OpenAI 模型：{chatgpt_model}（可用 CHATGPT_MODEL 环境变量覆盖）")
@@ -134,13 +138,13 @@ if __name__ == "__main__":
         assistant_id = create_assistant(
             usr_name, chatgpt_model, client_openAI, resume_path=resume_path
         )
-        send_job_descriptions_to_chat(
+        uc.loop().run_until_complete(send_job_descriptions_to_chat(
             usr_name, url, browser_type, label, "chatgpt",
             client_openAI=client_openAI, assistant_id=assistant_id, dry_run=dry_run,
-        )
+        ))
     elif provider == "claude":
         vectorstore = embed_pdf(resume_path, "./vectorstores")
-        send_job_descriptions_to_chat(
+        uc.loop().run_until_complete(send_job_descriptions_to_chat(
             usr_name, url, browser_type, label, "claude",
             vectorstore=vectorstore, dry_run=dry_run,
-        )
+        ))
