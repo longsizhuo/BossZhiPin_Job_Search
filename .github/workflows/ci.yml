@@ -49,6 +49,7 @@ jobs:
           uv run python -c "from models.prompts import assistant_instructions"
           uv run python -c "from website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message"
           uv run python -c "from website_oper.write_response import send_job_descriptions_to_chat, chat"
+          uv run python -c "from scripts.dump_boss_page import PROBE_JS, TARGET_URL, main"
 
       - name: 跑 pytest
         run: uv run pytest tests/ -v --tb=short
