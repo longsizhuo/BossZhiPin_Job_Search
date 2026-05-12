@@ -1,0 +1,27 @@
+{
+  "skill_name": "boss-zhipin-onboarding",
+  "evals": [
+    {
+      "id": 1,
+      "name": "no-uv-installed-mac-m1",
+      "prompt": "我刚从 GitHub 把 longsizhuo/BossZhiPin_Job_Search clone 下来了，README 说要先跑 uv sync 但是我电脑没有 uv 这个命令，我跑 uv 提示 zsh: command not found: uv。我用的是 mac M1 芯片的 MacBook。我是完全的编程新手，刚学会 cd 命令。",
+      "expected_output": "Agent 应该：(1) 给出准确的 uv 安装命令 `curl -LsSf https://astral.sh/uv/install.sh | sh`；(2) 提醒装完要重启终端或 source ~/.zshrc 才能识别 uv；(3) 给出验证命令 `which uv` 和 `uv --version`；(4) **不要**一次性把后面 4 个里程碑全部命令甩给用户，应该等用户确认 uv 装好了再进入下一步；(5) 风格友好，不堆术语。",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "name": "chrome-stuck-on-login",
+      "prompt": "我按 README 跑了 DRY_RUN=1 uv run main.py，Chrome 自动开了，停在 BOSS 的登录页面。然后我看到日志输出 检测到已登录 但是网页明明还在登录页，二维码也没出现。我等了 5 分钟还是没动静。我应该怎么办？",
+      "expected_output": "Agent 应该：(1) 让用户先跑诊断脚本 check-env.sh 看 chrome_profile 状态；(2) 解释这是 cookie 状态判定的 false positive（脚本看 URL 以为登录了，其实没扫码 cookie）；(3) 引导用户去 docs/wiki/troubleshooting.md 第 4 条 看完整诊断步骤；(4) 给出具体修复路径：完全退出 Chrome 进程，手动用同一个 user-data-dir 开 Chrome 扫码登录一次，cookie 落地后再跑脚本；(5) **不要**建议改代码或绕过登录检测。",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 3,
+      "name": "what-is-api-key",
+      "prompt": "DEEPSEEK_API_KEY 是个啥东西？我看 .env.example 里有这个变量，README 说要去 deepseek 的网站申请，但我点进去什么都不懂，让我充值还要绑卡，我有点害怕。我可以不用 API key 直接跑这个脚本吗？还有这个脚本会不会偷我的钱？",
+      "expected_output": "Agent 应该：(1) 用大白话解释 API key 就是一串密码字符串，让脚本能调用 DeepSeek 那边的 AI 模型；(2) 解释为什么必须要 —— 这个脚本依赖 LLM 生成中文招呼语，没有 key 就没办法生成；(3) 安抚 fear of charge —— DeepSeek 充 5 块够用很久，每次调用约 0.002 元，是预付费不会自动扣大额；(4) 给具体步骤：注册 → 实名（如果有要求）→ 充值 5 元 → 创建一个 key 复制粘贴到 .env；(5) 提醒 key 是密码，不要分享、不要 commit 进 git；(6) 友好地说"会害怕很正常，第一次都这样"。"
+    }
+  ]
+}
