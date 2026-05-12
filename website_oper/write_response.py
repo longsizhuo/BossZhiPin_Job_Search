@@ -242,7 +242,9 @@ def send_job_descriptions_to_chat(
                     else:
                         log.info("发送招呼语：%s", response)
                         time.sleep(1)
-                        contact_xpath = "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[1]/div[2]/a[2]"
+                        # 旧版绝对 xpath 在 2026-05 BOSS 改版后失效，
+                        # 改成 class 匹配，跟 get_text_by_css(".op-btn.op-btn-chat") 配套。
+                        contact_xpath = "//a[contains(@class, 'op-btn-chat')]"
                         finding_jobs.click_by_xpath(contact_xpath, timeout=10)
                         finding_jobs.wait_for_css("#chat-input", timeout=50)
                         send_response_and_go_back(response)

@@ -46,10 +46,14 @@ TARGET_URL = os.environ.get(
 )
 SETTLE_SECONDS = float(os.environ.get("BOSS_DEBUG_SETTLE", "8"))
 
-# 探测 JS：尽量穷举 BOSS 可能用的选择器范式，结果落到一个对象里返回。
-# 不用 await，纯同步 DOM 查询，避免 Promise 复杂度。
+# 探测 JS：尽量穷举 BOSS 可能用的选择器范式。
+# 这里**故意手动 JSON.stringify** —— nodriver 0.48 的 ``tab.evaluate`` 即使带
+# ``return_by_value=True`` 也偶尔返回 ``RemoteObject``（CDP wrapper）而不是
+# Python 原生 dict，Python 侧 json.dumps 直接抛 ``Object of type RemoteObject
+# is not JSON serializable``。让 JS 自己输出字符串，Python 拿到再 json.loads，
+# 绕开 nodriver 的 marshalling 差异。
 PROBE_JS = r"""
-(() => {
+JSON.stringify((() => {
   const out = { url: location.href, title: document.title };
 
   // 1. 总体元素统计
@@ -128,7 +132,7 @@ PROBE_JS = r"""
   }));
 
   return out;
-})()
+})())
 """
 
 
@@ -183,18 +187,28 @@ async def main() -> None:
     except Exception as e:
         print(f"      失败：{type(e).__name__}: {e}")
 
-    # 3) 选择器探测
+    # 3) 选择器探测 —— JS 自己 JSON.stringify，Python 直接拿字符串再 loads。
+    # 绕开 nodriver tab.evaluate 在不同版本下对复杂对象的 marshalling 差异。
     selectors_path = DEBUG_DIR / "selectors.json"
     print(f"[3/3] 候选选择器探测 → {selectors_path}")
-    try:
-        probe = await tab.evaluate(PROBE_JS, return_by_value=True)
-    except TypeError:
-        probe = await tab.evaluate(PROBE_JS)
-    # nodriver 在某些版本上返回 (value, exception_details) tuple，统一展开
-    if isinstance(probe, tuple) and len(probe) >= 1:
-        probe = probe[0]
+    raw = await tab.evaluate(PROBE_JS)
+    # 某些 nodriver 版本返回 (value, exception_details) tuple，展开
+    if isinstance(raw, tuple) and len(raw) >= 1:
+        raw = raw[0]
+    if isinstance(raw, str):
+        try:
+            probe = json.loads(raw)
+        except json.JSONDecodeError as e:
+            print(f"      JS 返回不是合法 JSON ({e})，落原文")
+            probe = {"raw": raw[:5000], "error": str(e)}
+    elif isinstance(raw, dict):
+        # 万一未来 nodriver 真的开始 marshal 成 dict 了，也兼容
+        probe = raw
+    else:
+        # 兜底：RemoteObject 或其它，str() 它别炸 json.dumps
+        probe = {"raw_repr": repr(raw)[:5000], "type": type(raw).__name__}
     selectors_path.write_text(
-        json.dumps(probe or {}, ensure_ascii=False, indent=2),
+        json.dumps(probe, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 

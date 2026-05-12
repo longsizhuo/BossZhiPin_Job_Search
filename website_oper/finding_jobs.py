@@ -201,7 +201,10 @@ def select_dropdown_option(label: str) -> None:
 
 async def _get_job_description_by_index_impl(index: int) -> str | None:
     log.info("[get_job_description_by_index] index=%d", index)
-    job_xpath = f"//*[@id='wrap']/div[2]/div[2]/div/div/div[1]/ul/li[{index}]"
+    # 旧版 BOSS：``//*[@id='wrap']/div[2]/div[2]/div/div/div[1]/ul/li[N]``
+    # 2026-05 改版后岗位卡用 ``.job-card-box``，不再是 ul>li 结构。
+    # 改用 class 包含匹配，对 BOSS 后续微调更鲁棒。
+    job_xpath = f"(//*[contains(@class, 'job-card-box')])[{index}]"
     jobs = await _xpath_safe(job_xpath, timeout=5)
     if not jobs:
         log.info("  没找到列表第 %d 个岗位（xpath: %s）", index, job_xpath)
@@ -209,7 +212,8 @@ async def _get_job_description_by_index_impl(index: int) -> str | None:
     log.info("  点击列表第 %d 个岗位", index)
     await jobs[0].click()
 
-    desc_xpath = "//*[@id='wrap']/div[2]/div[2]/div/div/div[2]/div/div[2]/p"
+    # 右侧 JD 详情面板：旧 xpath 是 ``.../div[2]/p``，新版包在 ``.job-detail-body`` 里。
+    desc_xpath = "//*[contains(@class, 'job-detail-body')]"
     descs = await _xpath_safe(desc_xpath, timeout=10)
     if not descs:
         log.info("  点击后 10s 内没读到 JD（xpath: %s）", desc_xpath)
