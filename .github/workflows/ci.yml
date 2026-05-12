@@ -14,8 +14,13 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # commit message 带 [skip ci] 的跳过整个 job
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # commit message 或 PR title 带 [skip ci] 的跳过整个 job。
+    # 注：``github.event.head_commit.message`` 只在 push 事件里存在；
+    # pull_request 事件下 head_commit 是 null，contains(null, ...) 返回 false，
+    # 自动 fall through 到检查 PR title。
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
     steps:
       - uses: actions/checkout@v4
 

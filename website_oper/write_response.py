@@ -142,7 +142,22 @@ def send_response_and_go_back(response: str) -> None:
 
 
 def _resolve_model_name(models: str, assistant_id: str | None) -> str:
-    """把 provider 名换成具体 model 名，用于 audit log。"""
+    """根据 provider 名给 audit log 拼一个 model 标识。
+
+    返回字段分两种语义：
+
+    - **DeepSeek / Claude** → 返回 ``PROVIDERS[provider]["default_model"]``，
+      值是真正的模型名（如 ``"deepseek-chat"``）。
+    - **OpenAI Assistants** → 返回 ``"assistant:<assistant_id>"``。这里**故意
+      不返回模型名**：一个 OpenAI Assistant 资源本身可能在不同时候绑不同
+      model（``client.beta.assistants.update``），具体哪次调用用了什么 model
+      要看 ``logs/llm_calls.jsonl`` 里 telemetry 行的 ``model`` 字段（那是
+      从 run object 上读的真实运行时 model）。
+
+    所以 ``logs/letters.jsonl`` 这一列里 ``model`` 字段对 chatgpt 是 assistant
+    资源 id 而不是模型名，这是有意为之 —— 跟 telemetry 配合使用，能 trace
+    到具体某次招呼语用的是 assistant 在那一刻绑的哪个 model。
+    """
     if models in PROVIDERS:
         return PROVIDERS[models]["default_model"] or ""
     if models == "chatgpt":
