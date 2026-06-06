@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BOSS Zhipin Helper",
+  "version": "0.3.0",
+  "identifier": "com.longsizhuo.boss-zhipin",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../tauri-ui dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm --dir ../tauri-ui build",
+    "frontendDist": "../src/boss_zhipin/tauri/frontend",
+    "features": ["pytauri/standalone"]
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "BOSS Zhipin Helper",
+        "label": "main",
+        "width": 1000,
+        "height": 720,
+        "minWidth": 600,
+        "minHeight": 400
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}

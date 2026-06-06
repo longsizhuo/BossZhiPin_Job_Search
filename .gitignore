@@ -66,3 +66,8 @@
 /build/
 /dist/
 
+# Phase D standalone：Rust 编译产物 / Tauri 生成物 / 嵌入式 Python，全不进仓
+/src-tauri/target/
+/src-tauri/gen/schemas/
+/src-tauri/pyembed/
+
