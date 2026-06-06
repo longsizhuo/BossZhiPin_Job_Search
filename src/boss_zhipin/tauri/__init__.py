@@ -1,8 +1,8 @@
 """PyTauri 桌面 App 入口。
 
-跑：``uv sync --extra tauri && uv run python -m boss_tauri``
+跑：``uv sync --extra tauri && uv run python -m boss_zhipin.tauri``
 
-跟 CLI（``main.py``）平行存在；CLI 模式完全不动。本模块对外暴露三件事：
+跟 CLI（``boss_zhipin.cli``）平行存在；CLI 模式完全不动。本模块对外暴露三件事：
 
 - ``commands``：PyTauri ``Commands`` 实例，注册了 ``start_run`` / ``stop_run`` /
   ``is_running`` / ``detect_providers`` 这些前端能调的命令。
@@ -58,8 +58,8 @@ class _CamelModel(BaseModel):
 class RunConfig(_CamelModel):
     """``start_run`` 的参数。
 
-    字段对齐 ``main.py`` 走 CLI 时收集的东西。空字符串 / None 走跟 CLI
-    一样的默认（比如 label 空时用 BOSS 默认推荐 feed）。
+    字段对齐 ``boss_zhipin.cli`` 走 CLI 时收集的东西。空字符串 / None 走跟
+    CLI 一样的默认（比如 label 空时用 BOSS 默认推荐 feed）。
     """
     usr_name: str
     label: str = ""
@@ -78,12 +78,12 @@ class StartRunBody(_CamelModel):
 async def detect_providers() -> dict[str, list[str]]:
     """前端用来填 provider 下拉——返回当前 env 里配了哪些 API key。
 
-    复用 ``main.py:detect_providers``，避免 CLI 和 GUI 行为分叉。
+    复用 ``boss_zhipin.cli:detect_providers``，避免 CLI 和 GUI 行为分叉。
     """
     # 延迟 import，避免本模块在 CLI 测试里被意外引入
-    from boss_zhipin import cli as main  # noqa: WPS433
+    from boss_zhipin.cli import detect_providers as _detect_providers  # noqa: WPS433
 
-    return {"providers": main.detect_providers()}
+    return {"providers": _detect_providers()}
 
 
 @commands.command()
@@ -100,11 +100,8 @@ def _build_main_loop_factory(config: RunConfig):
     要求的"同一 loop"约束满足。
     """
     async def factory():
-        # 延迟 import，让没装 ``tauri`` 可选依赖时 import boss_tauri 不立即炸。
-        from boss_zhipin.cli import RECOMMEND_URL, PROVIDER_ENV_KEYS
-        from boss_zhipin.vectorization import embed_pdf
-        from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat
-        from boss_zhipin.models.job_matcher import extract_keywords_from_text, extract_resume_text
+        # 延迟 import，让没装 ``tauri`` 可选依赖时 import boss_zhipin.tauri 不立即炸。
+        from boss_zhipin.cli import DEFAULT_RESUME_PATH, run_provider
 
         # 同步到 env，业务代码深处读 env 的地方（DRY_RUN / RESUME_PATH 等）也能感知
         if config.dry_run:
@@ -115,55 +112,17 @@ def _build_main_loop_factory(config: RunConfig):
         if config.label:
             environ["BOSS_LABEL"] = config.label
 
-        provider = config.provider
-        if provider not in PROVIDER_ENV_KEYS:
-            raise ValueError(f"unknown provider: {provider!r}")
+        resume_path = environ.get("RESUME_PATH", "").strip() or DEFAULT_RESUME_PATH
 
-        # 简历预处理（跟 CLI 入口顺序一致）
-        resume_path = environ.get("RESUME_PATH", "").strip() or "resume/my_cover.pdf"
-        resume_text = extract_resume_text(resume_path)
-        resume_keywords = extract_keywords_from_text(resume_text)
-        min_llm_score = int(environ.get("BOSS_MIN_MATCH_SCORE", "50"))
-
-        common_kwargs = dict(
+        # 简历预处理 + provider 路由全部走 cli.run_provider——CLI 和 GUI
+        # 共用一份逻辑，避免行为分叉。unknown provider 由它抛 ValueError。
+        await run_provider(
+            provider=config.provider,
             usr_name=config.usr_name,
-            url=RECOMMEND_URL,
-            browser_type="chrome",
             label=config.label,
             dry_run=config.dry_run,
-            resume_keywords=resume_keywords,
-            resume_text=resume_text,
-            min_llm_score=min_llm_score,
+            resume_path=resume_path,
         )
-
-        if provider == "chatgpt":
-            # OpenAI 走 Assistants API，需要 client + assistant_id
-            from openai import OpenAI
-            from boss_zhipin.models.openai_assistant import OPENAI_API_KEY, create_assistant
-
-            chatgpt_model = environ.get("CHATGPT_MODEL", "").strip() or "gpt-4o"
-            openai_base_url = environ.get("OPENAI_BASE_URL", "").strip()
-            client_openai = OpenAI(
-                api_key=OPENAI_API_KEY,
-                base_url=openai_base_url or None,
-            )
-            assistant_id = create_assistant(
-                config.usr_name, chatgpt_model, client_openai, resume_path=resume_path
-            )
-            await send_job_descriptions_to_chat(
-                models="chatgpt",
-                client_openAI=client_openai,
-                assistant_id=assistant_id,
-                **common_kwargs,
-            )
-        else:
-            # deepseek / claude 走 RAG，需要 vectorstore
-            vectorstore = embed_pdf(resume_path, "./vectorstores")
-            await send_job_descriptions_to_chat(
-                models=provider,
-                vectorstore=vectorstore,
-                **common_kwargs,
-            )
 
     return factory
 

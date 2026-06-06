@@ -4,6 +4,8 @@ version = "0.3.0"
 identifier = "com.longsizhuo.boss-zhipin"
 
 [build]
+# 相对本文件所在目录（__init__.py 的 SRC_TAURI_DIR）解析。
+# tauri-ui/vite.config.ts 的 build.outDir 必须构建到同一个目录。
 frontendDist = "./frontend"
 
 [app]

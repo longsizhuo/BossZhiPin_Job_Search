@@ -30,7 +30,7 @@ _PROJECT_ENV_VARS = (
     "LETTER_LOG_PATH", "BOSS_LLM_TELEMETRY_PATH", "BOSS_CHROME_PROFILE",
     # letter 校验边界
     "LETTER_MIN_LEN", "LETTER_MAX_LEN",
-    # main.py 用的全局 log 级
+    # boss_zhipin.cli 用的全局 log 级
     "LOGLEVEL", "DRY_RUN",
 )
 for _key in _PROJECT_ENV_VARS:

@@ -11,7 +11,12 @@
 
 设计：用户输入提示用 ``print``，业务流程用 ``logging``。logging 在
 ``_cli_main`` 里 ``basicConfig`` 统一初始化——**不在 module top**，避免
-``import boss_zhipin.cli`` 时 side effect 污染 GUI 进程。
+``import boss_zhipin.cli`` 时改掉 GUI 进程的 logging 配置。
+
+注意：本模块自己不在 import-time 调 ``load_dotenv``，但顶层 import 的
+``models.*`` 子模块会（历史行为）。所以 ``import boss_zhipin.cli`` 仍会把
+``.env`` 读进 ``os.environ``——GUI 的 ``detect_providers`` 依赖这一点，
+不要为了"纯净 import"把这些 import 延迟掉。
 """
 from __future__ import annotations
 
@@ -39,6 +44,9 @@ PROVIDER_ENV_KEYS: dict[str, str] = {
 
 # BOSS 推荐 feed 入口。CLI 和 GUI 都从这里进。
 RECOMMEND_URL = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-recommend"
+
+# 简历默认路径。CLI（ensure_resume_path）和 GUI（tauri 的 factory）共用。
+DEFAULT_RESUME_PATH = "resume/my_cover.pdf"
 
 PROVIDER_SIGNUP: dict[str, str] = {
     "deepseek": "https://platform.deepseek.com/api_keys",
@@ -85,7 +93,7 @@ def ensure_usr_name() -> str:
 
 
 def ensure_resume_path() -> str:
-    resume_path = os.getenv("RESUME_PATH", "").strip() or "resume/my_cover.pdf"
+    resume_path = os.getenv("RESUME_PATH", "").strip() or DEFAULT_RESUME_PATH
     if not Path(resume_path).is_file():
         print(f"❌ 找不到简历文件：{resume_path}")
         print(f"   请把 PDF 简历放到这个路径，或者在 .env 设 RESUME_PATH 指向其他位置。")
@@ -98,12 +106,81 @@ def get_label() -> str:
     return os.getenv("BOSS_LABEL", "").strip()
 
 
+async def run_provider(
+    provider: str,
+    usr_name: str,
+    label: str,
+    dry_run: bool,
+    resume_path: str,
+) -> None:
+    """简历预处理 + provider 路由 + 主循环，CLI 和 GUI 共用的唯一入口。
+
+    路由规则（改这里就同时影响 CLI 和桌面 App，不会分叉）：
+    - ``chatgpt`` 走 OpenAI Assistants API（client + assistant_id）
+    - ``deepseek`` / ``claude`` 走 RAG（chroma vectorstore）
+
+    必须在同一个事件循环里 await（nodriver CDP 跨 run_until_complete 会半死，
+    见 ``_cli_main`` 的注释）。
+    """
+    if provider not in PROVIDER_ENV_KEYS:
+        raise ValueError(f"unknown provider: {provider!r}")
+
+    # 从简历自动提取关键词和全文（用于职位匹配过滤）
+    resume_text = extract_resume_text(resume_path)
+    resume_keywords = extract_keywords_from_text(resume_text)
+    log.info("📋 从简历中提取到 %d 个关键词: %s", len(resume_keywords), resume_keywords)
+    # LLM 匹配分阈值，低于该分跳过不投；可用 BOSS_MIN_MATCH_SCORE 覆盖
+    min_llm_score = int(os.getenv("BOSS_MIN_MATCH_SCORE", "50"))
+
+    common_kwargs = dict(
+        usr_name=usr_name,
+        url=RECOMMEND_URL,
+        browser_type="chrome",
+        label=label,
+        dry_run=dry_run,
+        resume_keywords=resume_keywords,
+        resume_text=resume_text,
+        min_llm_score=min_llm_score,
+    )
+
+    if provider == "chatgpt":
+        chatgpt_model = os.getenv("CHATGPT_MODEL", "").strip() or "gpt-4o"
+        log.info("OpenAI 模型：%s（可用 CHATGPT_MODEL 环境变量覆盖）", chatgpt_model)
+        openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+        if openai_base_url:
+            log.info("OpenAI base_url 覆盖：%s", openai_base_url)
+        client_openai = OpenAI(
+            api_key=OPENAI_API_KEY,
+            base_url=openai_base_url or None,
+        )
+        assistant_id = create_assistant(
+            usr_name, chatgpt_model, client_openai, resume_path=resume_path
+        )
+        await send_job_descriptions_to_chat(
+            models="chatgpt",
+            client_openAI=client_openai,
+            assistant_id=assistant_id,
+            **common_kwargs,
+        )
+    else:
+        # deepseek / claude：除了 provider 名，调用完全一致
+        vectorstore = embed_pdf(resume_path, "./vectorstores")
+        await send_job_descriptions_to_chat(
+            models=provider,
+            vectorstore=vectorstore,
+            **common_kwargs,
+        )
+
+
 def _cli_main() -> None:
     """``python -m boss_zhipin`` / 根目录 ``main.py`` shim / pyproject script
     都委托到这个函数。
 
-    把 ``load_dotenv`` 和 ``logging.basicConfig`` 收进来——只有真正"以 CLI
-    方式跑"才生效，单纯 ``import boss_zhipin.cli`` 不会污染 logging。
+    把 ``load_dotenv`` 和 ``logging.basicConfig`` 收进来——``basicConfig``
+    只有真正"以 CLI 方式跑"才生效，单纯 ``import boss_zhipin.cli`` 不会污染
+    logging。（``.env`` 本身仍会在 import-time 经由 ``models.*`` 读入，见
+    module docstring；这里的 ``load_dotenv()`` 是给"models 还没 import 就
+    需要 env"的将来留的显式入口，幂等。）
     """
     load_dotenv()
     logging.basicConfig(
@@ -125,54 +202,12 @@ def _cli_main() -> None:
     else:
         print("没设 BOSS_LABEL，用 BOSS 默认推荐 feed")
 
-    url = RECOMMEND_URL
-    browser_type = "chrome"
-
-    # 从简历自动提取关键词和全文（用于职位匹配过滤）
-    resume_text = extract_resume_text(resume_path)
-    resume_keywords = extract_keywords_from_text(resume_text)
-    print(f"📋 从简历中提取到 {len(resume_keywords)} 个关键词: {resume_keywords}")
-    # LLM 匹配分阈值，低于该分跳过不投；可用 BOSS_MIN_MATCH_SCORE 覆盖
-    min_llm_score = int(os.getenv("BOSS_MIN_MATCH_SCORE", "50"))
-
-    # send_job_descriptions_to_chat 是 async 的（整段必须跑在同一个事件循环里，
-    # 否则 nodriver CDP 会在 run_until_complete 之间进入半死态导致 evaluate hang）。
+    # run_provider 是 async 的（整段必须跑在同一个事件循环里，否则 nodriver
+    # CDP 会在 run_until_complete 之间进入半死态导致 evaluate hang）。
     # 这里用 ``uc.loop().run_until_complete(...)`` 一次性跑完。
-    if provider == "deepseek":
-        vectorstore = embed_pdf(resume_path, "./vectorstores")
-        uc.loop().run_until_complete(send_job_descriptions_to_chat(
-            usr_name, url, browser_type, label, "deepseek",
-            vectorstore=vectorstore, dry_run=dry_run,
-            resume_keywords=resume_keywords, resume_text=resume_text,
-            min_llm_score=min_llm_score,
-        ))
-    elif provider == "chatgpt":
-        chatgpt_model = os.getenv("CHATGPT_MODEL", "").strip() or "gpt-4o"
-        print(f"OpenAI 模型：{chatgpt_model}（可用 CHATGPT_MODEL 环境变量覆盖）")
-        openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-        if openai_base_url:
-            print(f"OpenAI base_url 覆盖：{openai_base_url}")
-        client_openAI = OpenAI(
-            api_key=OPENAI_API_KEY,
-            base_url=openai_base_url or None,
-        )
-        assistant_id = create_assistant(
-            usr_name, chatgpt_model, client_openAI, resume_path=resume_path
-        )
-        uc.loop().run_until_complete(send_job_descriptions_to_chat(
-            usr_name, url, browser_type, label, "chatgpt",
-            client_openAI=client_openAI, assistant_id=assistant_id, dry_run=dry_run,
-            resume_keywords=resume_keywords, resume_text=resume_text,
-            min_llm_score=min_llm_score,
-        ))
-    elif provider == "claude":
-        vectorstore = embed_pdf(resume_path, "./vectorstores")
-        uc.loop().run_until_complete(send_job_descriptions_to_chat(
-            usr_name, url, browser_type, label, "claude",
-            vectorstore=vectorstore, dry_run=dry_run,
-            resume_keywords=resume_keywords, resume_text=resume_text,
-            min_llm_score=min_llm_score,
-        ))
+    uc.loop().run_until_complete(
+        run_provider(provider, usr_name, label, dry_run, resume_path)
+    )
 
 
 if __name__ == "__main__":

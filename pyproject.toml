@@ -41,6 +41,21 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# wheel 里必须带上 Tauri 的非 Python 文件，否则 standalone bundle（Phase D）
+# 装出来 context_factory 找不到 Tauri.toml / frontend，桌面 App 直接起不来。
+# editable install（uv sync）指回源码树所以感知不到——别因为本地能跑就删这段。
+"boss_zhipin.tauri" = [
+    "Tauri.toml",
+    "capabilities/*.toml",
+    "frontend/**",
+]
+
+[tool.pytest.ini_options]
+# 兜底：没做 editable install（裸 venv + pip install pytest）也能跑测试。
+# uv sync 流程不依赖这行，但贡献者用别的环境管理时少踩一个坑。
+pythonpath = ["src"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",

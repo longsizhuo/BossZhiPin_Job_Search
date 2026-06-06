@@ -62,3 +62,7 @@
 *.egg-info/
 /src/*.egg-info/
 
+# uv build / python -m build 的输出（build/lib 里是过期的包副本，绝不能提交）
+/build/
+/dist/
+

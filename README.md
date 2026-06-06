@@ -128,16 +128,20 @@ BOSS_CHROME_PROFILE="$HOME/Library/Application Support/Google/Chrome" uv run mai
 
 ```
 .
-├── main.py                       # 入口，处理交互/env 校验/路由 provider
-├── models/
-│   ├── llm.py                    # provider 配置 + DeepSeek/Claude 的 chat completions 调用
-│   ├── openai_assistant.py       # OpenAI Assistants 模式（带 vector store 的）
-│   └── prompts.py                # 招呼语 prompt 模板
-├── website_oper/
-│   ├── finding_jobs.py           # 浏览器自动化（nodriver），sync facade + async impl
-│   └── write_response.py         # 单个岗位的主循环：JD → 生成 → 校验 → 发送/日志
-├── vectorization.py              # 简历 PDF 解析 + sentence-transformers 向量化 + Chroma 持久化
-├── audit.py                      # 招呼语校验 + JSONL 审计日志
+├── main.py                       # 兼容 shim：uv run main.py 仍然可用，实际委托 boss_zhipin.cli
+├── src/boss_zhipin/              # 业务代码都在这个可安装 package 里
+│   ├── cli.py                    # CLI 入口，处理交互/env 校验/路由 provider
+│   ├── models/
+│   │   ├── llm.py                # provider 配置 + DeepSeek/Claude 的 chat completions 调用
+│   │   ├── openai_assistant.py   # OpenAI Assistants 模式（带 vector store 的）
+│   │   └── prompts.py            # 招呼语 prompt 模板
+│   ├── website_oper/
+│   │   ├── finding_jobs.py       # 浏览器自动化（nodriver），sync facade + async impl
+│   │   └── write_response.py     # 单个岗位的主循环：JD → 生成 → 校验 → 发送/日志
+│   ├── vectorization.py          # 简历 PDF 解析 + sentence-transformers 向量化 + Chroma 持久化
+│   ├── audit/                    # 招呼语校验 + JSONL 审计日志 + LLM telemetry
+│   ├── gui/                      # 桌面 App 的胶水层（不依赖 PyTauri 本身）
+│   └── tauri/                    # PyTauri 桌面 App 入口（uv run python -m boss_zhipin.tauri）
 └── .env.example                  # 所有环境变量的注释样板
 ```
 
