@@ -49,11 +49,12 @@
 .claude/skills/**/workspace/
 .claude/skills/*-workspace/
 
-# Tauri 桌面 App 构建产物 + 前端依赖
+# Tauri 桌面 App 构建产物 + 前端依赖（src/boss_zhipin/tauri/frontend 由 vite
+# 输出；Phase D-pre 后 boss_tauri/ 路径已不存在）
 /tauri-ui/node_modules/
 /tauri-ui/dist/
-/boss_tauri/frontend/
-/boss_tauri/__pycache__/
+/src/boss_zhipin/tauri/frontend/
+/src/boss_zhipin/tauri/__pycache__/
 
 # 简历 PDF（CLAUDE.md 红线，不能进仓）
 /resume/*.pdf
@@ -65,4 +66,9 @@
 # uv build / python -m build 的输出（build/lib 里是过期的包副本，绝不能提交）
 /build/
 /dist/
+
+# Phase D standalone：Rust 编译产物 / Tauri 生成物 / 嵌入式 Python，全不进仓
+/src-tauri/target/
+/src-tauri/gen/schemas/
+/src-tauri/pyembed/
 

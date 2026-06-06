@@ -43,7 +43,8 @@ jobs:
           # 是向后兼容 shim。CI 同时校验两侧：(1) 包导入，(2) main.py shim 能 import。
           uv run python -c "import main"
           uv run python -c "import boss_zhipin"
-          uv run python -c "from boss_zhipin.cli import _cli_main, detect_providers, pick_provider, RECOMMEND_URL, PROVIDER_ENV_KEYS"
+          uv run python -c "from boss_zhipin.cli import _cli_main, detect_providers, pick_provider, run_provider, RECOMMEND_URL, PROVIDER_ENV_KEYS"
+          uv run python -c "from boss_zhipin.paths import is_standalone, app_data_dir, ensure_app_data_cwd, APP_IDENTIFIER"
           uv run python -c "from boss_zhipin.audit import validate_letter, log_attempt"
           uv run python -c "from boss_zhipin.audit.telemetry import record_llm_call, telemetry_summary, estimate_cost_cny"
           uv run python -c "from boss_zhipin.utils.retry import retry_with_backoff"

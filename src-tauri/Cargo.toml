@@ -1,0 +1,41 @@
+# Phase D standalone bundle 用的 Rust 项目（独立于 pytauri 官方 workspace，
+# 所有 `workspace = true` 都改成显式版本）。
+#
+# 只在打 standalone .app 时编译；wheel dev 模式（uv run python -m
+# boss_zhipin.tauri）完全不碰本目录。
+
+[package]
+name = "boss-zhipin"
+version = "0.3.0"
+description = "BOSS Zhipin Helper (PyTauri standalone)"
+authors = ["longsizhuo"]
+edition = "2021"
+
+[lib]
+# pytauri 要求 lib 和 bin 同名工程时 lib 名字加 `_lib` 后缀避开 Windows 链接冲突
+name = "boss_zhipin_lib"
+# cdylib 给 PyO3 pymodule，staticlib 给 bin，rlib 给 cargo dep 解析
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "boss-zhipin"
+path = "src/main.rs"
+# pytauri/standalone 这个 feature 是 standalone 模式必开的，不开 main.rs 里
+# PythonInterpreterBuilder 这堆类型都没有
+required-features = ["pytauri/standalone"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pyo3 = "0.25"
+pytauri = "0.8"
+tauri-plugin-pytauri = "0.8"
+
+# standalone bundle 用独立 profile，不污染 `tauri dev` 的 target/release
+# （pytauri 官方 build-standalone 教程的做法）
+[profile.bundle-release]
+inherits = "release"

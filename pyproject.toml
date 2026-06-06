@@ -27,6 +27,15 @@ tauri = [
     "pytauri==0.8.*",
     "pytauri-wheel==0.8.*",
 ]
+# Phase D standalone .app 的嵌入式 Python 环境用：跟 tauri 一样但**不带**
+# pytauri-wheel——standalone 模式 ext_mod 由我们自己的 Rust binary 提供，
+# 不需要 wheel 里那份预编译 binary（白占几十 MB）。
+# 用法见 scripts/build_standalone.sh。
+standalone = [
+    "pydantic>=2.0",
+    "anyio>=4.0",
+    "pytauri==0.8.*",
+]
 
 [project.scripts]
 # uv run boss-zhipin 等价于 uv run python -m boss_zhipin / uv run main.py

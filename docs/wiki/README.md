@@ -17,6 +17,7 @@
 - [ADR-002 三家 LLM provider 共用 OpenAI SDK](adr/002-three-providers.md)
 - [ADR-003 LLM telemetry 单独落盘，跟 letters audit log 分离](adr/003-telemetry-separate.md)
 - [ADR-004 持久化 Chrome profile 而不是 mock 登录态](adr/004-persistent-chrome-profile.md)
+- [ADR-005 pytauri standalone 打独立 .app，双运行模式并存](adr/005-pytauri-standalone.md)
 
 ## 怎么继续读
 

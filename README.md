@@ -50,6 +50,26 @@ uv run main.py
 
 ---
 
+## 桌面 App（GUI）
+
+两种跑法（设计细节见 [ADR-005](docs/wiki/adr/005-pytauri-standalone.md)）：
+
+```bash
+# 开发模式：Python 主进程 + pytauri-wheel
+uv sync --extra tauri
+uv run python -m boss_zhipin.tauri
+
+# Standalone .app（macOS）：打一个双击就能跑的 bundle
+./scripts/build_standalone.sh
+# 产物在 src-tauri/target/bundle-release/bundle/macos/
+```
+
+Standalone 模式的用户数据（`.env` / `chrome_profile/` / `logs/` /
+`vectorstores/`）落在 `~/Library/Application Support/com.longsizhuo.boss-zhipin/`，
+跟 repo 目录互不干扰。
+
+---
+
 ## `.env` 字段速查
 
 仓库根目录的 [`.env.example`](.env.example) 是完整模板，几个关键字段：

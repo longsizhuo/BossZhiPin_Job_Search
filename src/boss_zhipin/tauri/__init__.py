@@ -1,13 +1,18 @@
 """PyTauri 桌面 App 入口。
 
-跑：``uv sync --extra tauri && uv run python -m boss_zhipin.tauri``
+**两种运行模式**，靠 ``BOSS_TAURI_STANDALONE`` env var 区分：
 
-跟 CLI（``boss_zhipin.cli``）平行存在；CLI 模式完全不动。本模块对外暴露三件事：
+1. **Wheel dev 模式**（默认）：``uv sync --extra tauri && uv run python -m
+   boss_zhipin.tauri``。Python 进程是主进程，``pytauri-wheel`` 提供 Tauri
+   Rust binary。Tauri.toml / capabilities / frontend 从本包 source 目录读。
 
-- ``commands``：PyTauri ``Commands`` 实例，注册了 ``start_run`` / ``stop_run`` /
-  ``is_running`` / ``detect_providers`` 这些前端能调的命令。
-- ``main()``：起 PyTauri app 的入口。
-- 各个 ``@commands.command()`` 函数本身——单测可以直接调（不通过 IPC）。
+2. **Standalone 模式**（Phase D 打包后的 .app）：Rust binary 是主进程，
+   embed Python interpreter，启动时 set ``BOSS_TAURI_STANDALONE=1``，再
+   ``PythonScript::Module("boss_zhipin.tauri")`` 进入 ``__main__.py`` → 这里的
+   ``main()``。Tauri.toml / capabilities / frontend 已经在编译期通过
+   ``tauri::generate_context!()`` 嵌进 Rust binary，Python 不再读。
+
+跟 CLI（``boss_zhipin.cli``）平行存在；CLI 模式完全不动。
 
 业务代码（``website_oper`` / ``audit``）**完全不知道有 Tauri 这层**：
 - 进度事件通过 ``gui.events.set_emit_callback`` 注入到 PyTauri Channel
@@ -17,8 +22,8 @@
 **关键约束**（见 project memory）：
 - `start_blocking_portal("asyncio")` —— 不能默认 trio/uvloop，否则 nodriver
   重启 Chrome 会 timeout。
-- ``capabilities/default.toml`` 必须 grant ``pytauri:default``，否则前端的
-  ``pyInvoke`` 会被 Tauri ACL 拦。
+- ``capabilities/default.toml``（wheel）/ ``capabilities/default.json``
+  （standalone）必须 grant ``pytauri:default``，否则前端 ``pyInvoke`` 被 ACL 拦。
 """
 from os import environ
 from pathlib import Path
@@ -37,13 +42,13 @@ from pydantic.alias_generators import to_camel
 from pytauri import Commands
 from pytauri.ipc import Channel, JavaScriptChannelId
 from pytauri.webview import WebviewWindow
-from pytauri_wheel.lib import builder_factory, context_factory
 
 from boss_zhipin.gui import log_bridge, runner
 from boss_zhipin.gui.events import ProgressEvent
 
 SRC_TAURI_DIR = Path(__file__).parent.absolute()
 BOSS_DEV = environ.get("BOSS_TAURI_DEV") == "1"
+BOSS_STANDALONE = environ.get("BOSS_TAURI_STANDALONE") == "1"
 
 log = logging.getLogger(__name__)
 
@@ -251,23 +256,40 @@ async def get_telemetry_summary() -> dict[str, dict]:
 
 
 def main() -> int:
-    """启动 PyTauri app。"""
+    """启动 PyTauri app——根据 BOSS_TAURI_STANDALONE 自动切换 wheel / standalone。"""
+    if BOSS_STANDALONE:
+        # .app 双击启动时 CWD 是 ``/``，所有相对默认路径（logs/ vectorstores/
+        # chrome_profile/ .env resume/）都会落错地方。入口处统一 chdir 到
+        # 平台应用数据目录，business 代码不用感知。必须在任何业务 import
+        # （models.* 的 load_dotenv 是 import-time）之前做。
+        from boss_zhipin.paths import ensure_app_data_cwd
+        data_dir = ensure_app_data_cwd()
+
     logging.basicConfig(
         level=environ.get("LOGLEVEL", "INFO"),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
 
-    with start_blocking_portal("asyncio") as portal:
-        if BOSS_DEV:
-            tauri_config: Optional[dict] = {
-                "build": {"frontendDist": "http://localhost:1420"},
-            }
-        else:
-            tauri_config = None
+    if BOSS_STANDALONE:
+        log.info("standalone 模式：数据目录 %s", data_dir)
+        # Standalone：Rust binary 已经 register 了 ext_mod，pytauri.builder_factory
+        # / pytauri.context_factory 直接可用；Tauri.toml 已经被 generate_context!
+        # 宏 inline 进 Rust binary，不需要再从 source 目录读，context_factory 无参。
+        from pytauri import builder_factory, context_factory
+        ctx = context_factory()
+    else:
+        # Wheel dev 模式：pytauri-wheel 内部维护自己的 Rust binary，需要把
+        # Tauri.toml 所在目录传给 context_factory 让它在运行时读。
+        from pytauri_wheel.lib import builder_factory, context_factory
+        tauri_config: Optional[dict] = (
+            {"build": {"frontendDist": "http://localhost:1420"}} if BOSS_DEV else None
+        )
+        ctx = context_factory(SRC_TAURI_DIR, tauri_config=tauri_config)
 
+    with start_blocking_portal("asyncio") as portal:
         app = builder_factory().build(
-            context=context_factory(SRC_TAURI_DIR, tauri_config=tauri_config),
+            context=ctx,
             invoke_handler=commands.generate_handler(portal),
         )
         return app.run_return()
