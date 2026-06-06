@@ -58,3 +58,7 @@
 # 简历 PDF（CLAUDE.md 红线，不能进仓）
 /resume/*.pdf
 
+# setuptools editable install 的产物
+*.egg-info/
+/src/*.egg-info/
+
