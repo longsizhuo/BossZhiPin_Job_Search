@@ -20,7 +20,7 @@ import nodriver as uc
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from models.job_matcher import extract_keywords_from_resume, extract_resume_text
+from models.job_matcher import extract_keywords_from_text, extract_resume_text
 from models.openai_assistant import OPENAI_API_KEY, create_assistant
 from vectorization import embed_pdf
 from website_oper.write_response import send_job_descriptions_to_chat
@@ -41,6 +41,9 @@ PROVIDER_ENV_KEYS: dict[str, str] = {
     "chatgpt": "OPENAI_API_KEY",
     "claude": "ANTHROPIC_API_KEY",
 }
+
+# BOSS 推荐 feed 入口。CLI 和 GUI 都从这里进。
+RECOMMEND_URL = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-recommend"
 
 PROVIDER_SIGNUP: dict[str, str] = {
     "deepseek": "https://platform.deepseek.com/api_keys",
@@ -114,13 +117,15 @@ if __name__ == "__main__":
     else:
         print("没设 BOSS_LABEL，用 BOSS 默认推荐 feed")
 
-    url = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-recommend"
+    url = RECOMMEND_URL
     browser_type = "chrome"
 
     # 从简历自动提取关键词和全文（用于职位匹配过滤）
-    resume_keywords = extract_keywords_from_resume(resume_path)
     resume_text = extract_resume_text(resume_path)
+    resume_keywords = extract_keywords_from_text(resume_text)
     print(f"📋 从简历中提取到 {len(resume_keywords)} 个关键词: {resume_keywords}")
+    # LLM 匹配分阈值，低于该分跳过不投；可用 BOSS_MIN_MATCH_SCORE 覆盖
+    min_llm_score = int(os.getenv("BOSS_MIN_MATCH_SCORE", "50"))
 
     # send_job_descriptions_to_chat 是 async 的（整段必须跑在同一个事件循环里，
     # 否则 nodriver CDP 会在 run_until_complete 之间进入半死态导致 evaluate hang）。
@@ -131,7 +136,7 @@ if __name__ == "__main__":
             usr_name, url, browser_type, label, "deepseek",
             vectorstore=vectorstore, dry_run=dry_run,
             resume_keywords=resume_keywords, resume_text=resume_text,
-            min_llm_score=50,
+            min_llm_score=min_llm_score,
         ))
     elif provider == "chatgpt":
         chatgpt_model = os.getenv("CHATGPT_MODEL", "").strip() or "gpt-4o"
@@ -150,7 +155,7 @@ if __name__ == "__main__":
             usr_name, url, browser_type, label, "chatgpt",
             client_openAI=client_openAI, assistant_id=assistant_id, dry_run=dry_run,
             resume_keywords=resume_keywords, resume_text=resume_text,
-            min_llm_score=50,
+            min_llm_score=min_llm_score,
         ))
     elif provider == "claude":
         vectorstore = embed_pdf(resume_path, "./vectorstores")
@@ -158,5 +163,5 @@ if __name__ == "__main__":
             usr_name, url, browser_type, label, "claude",
             vectorstore=vectorstore, dry_run=dry_run,
             resume_keywords=resume_keywords, resume_text=resume_text,
-            min_llm_score=50,
+            min_llm_score=min_llm_score,
         ))
