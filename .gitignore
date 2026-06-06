@@ -49,3 +49,12 @@
 .claude/skills/**/workspace/
 .claude/skills/*-workspace/
 
+# Tauri 桌面 App 构建产物 + 前端依赖
+/tauri-ui/node_modules/
+/tauri-ui/dist/
+/boss_tauri/frontend/
+/boss_tauri/__pycache__/
+
+# 简历 PDF（CLAUDE.md 红线，不能进仓）
+/resume/*.pdf
+
