@@ -51,9 +51,11 @@ jobs:
           uv run python -c "from website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message, shutdown"
           uv run python -c "from website_oper.write_response import send_job_descriptions_to_chat, chat"
           uv run python -c "from scripts.dump_boss_page import PROBE_JS, TARGET_URL, main"
-          uv run python -c "from gui.events import ProgressEvent, ProgressSink, current_progress, emit"
-          uv run python -c "from gui.runner import start_run, stop_run, is_running, get_sink, get_task, reset"
-          uv run python -c "from gui.log_bridge import AsyncQueueHandler, install, uninstall"
+          uv run python -c "from gui.events import ProgressEvent, EventKind, emit, set_emit_callback"
+          uv run python -c "from gui.runner import start_run, stop_run, is_running, get_task, reset"
+          uv run python -c "from gui.log_bridge import CallbackHandler, install, uninstall"
+          uv run python -c "from gui.env_io import read_env, write_env, field_meta, KNOWN_KEYS"
+          uv run python -c "from gui.history import read_letters"
 
       - name: 跑 pytest
         run: uv run pytest tests/ -v --tb=short
