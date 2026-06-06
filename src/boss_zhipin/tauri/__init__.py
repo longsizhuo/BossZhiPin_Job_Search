@@ -257,6 +257,14 @@ async def get_telemetry_summary() -> dict[str, dict]:
 
 def main() -> int:
     """启动 PyTauri app——根据 BOSS_TAURI_STANDALONE 自动切换 wheel / standalone。"""
+    if BOSS_STANDALONE:
+        # .app 双击启动时 CWD 是 ``/``，所有相对默认路径（logs/ vectorstores/
+        # chrome_profile/ .env resume/）都会落错地方。入口处统一 chdir 到
+        # 平台应用数据目录，business 代码不用感知。必须在任何业务 import
+        # （models.* 的 load_dotenv 是 import-time）之前做。
+        from boss_zhipin.paths import ensure_app_data_cwd
+        data_dir = ensure_app_data_cwd()
+
     logging.basicConfig(
         level=environ.get("LOGLEVEL", "INFO"),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -264,6 +272,7 @@ def main() -> int:
     )
 
     if BOSS_STANDALONE:
+        log.info("standalone 模式：数据目录 %s", data_dir)
         # Standalone：Rust binary 已经 register 了 ext_mod，pytauri.builder_factory
         # / pytauri.context_factory 直接可用；Tauri.toml 已经被 generate_context!
         # 宏 inline 进 Rust binary，不需要再从 source 目录读，context_factory 无参。

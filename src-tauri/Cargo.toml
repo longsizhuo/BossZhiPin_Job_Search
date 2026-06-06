@@ -34,3 +34,8 @@ serde_json = "1"
 pyo3 = "0.25"
 pytauri = "0.8"
 tauri-plugin-pytauri = "0.8"
+
+# standalone bundle 用独立 profile，不污染 `tauri dev` 的 target/release
+# （pytauri 官方 build-standalone 教程的做法）
+[profile.bundle-release]
+inherits = "release"

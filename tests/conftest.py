@@ -32,6 +32,8 @@ _PROJECT_ENV_VARS = (
     "LETTER_MIN_LEN", "LETTER_MAX_LEN",
     # boss_zhipin.cli 用的全局 log 级
     "LOGLEVEL", "DRY_RUN",
+    # standalone 模式开关 + 数据目录覆盖（paths.py 读）
+    "BOSS_TAURI_STANDALONE", "BOSS_APP_DATA_DIR",
 )
 for _key in _PROJECT_ENV_VARS:
     os.environ.pop(_key, None)
