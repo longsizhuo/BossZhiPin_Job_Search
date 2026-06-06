@@ -76,6 +76,29 @@ async def _wait_url_stable(stable_for: float = 2.0, timeout: float = 30) -> str:
 # ---------- 浏览器生命周期 ----------
 
 
+async def shutdown() -> None:
+    """关 Chrome 并清空模块级 ``_browser`` / ``_tab``。
+
+    给 GUI 用——用户点"重置"想从头来一遍时调一次，否则下次
+    ``open_browser_with_options`` 会留旧 Chrome 进程。CLI 不需要：``main.py``
+    退出时 OS 会清理子进程。
+
+    ``Browser.stop()`` 是同步函数，但本函数声明 ``async`` 是为了让 GUI
+    runner 能 ``await shutdown()``（runner 一律 await，sync/async 不混用）。
+
+    重启注意：这只关 Chrome 进程；nodriver 跟 uvloop 的重启不兼容问题需要
+    GUI 入口传 ``loop="asyncio"`` 才能彻底解决（见 project memory）。
+    """
+    global _browser, _tab
+    if _browser is not None:
+        try:
+            _browser.stop()
+        except Exception as e:
+            log.warning("browser.stop() 失败（不致命）: %s", e)
+    _browser = None
+    _tab = None
+
+
 async def open_browser_with_options(url: str, browser: str) -> None:
     """启动 Chrome 并打开 url。``browser`` 仅接受 ``"chrome"``。"""
     global _browser, _tab

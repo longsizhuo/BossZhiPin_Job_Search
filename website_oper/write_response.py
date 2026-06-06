@@ -28,6 +28,7 @@ import time
 
 from audit import log_attempt, validate_letter
 from audit.telemetry import record_llm_call
+from gui.events import emit as _emit_progress
 from models.job_matcher import should_apply
 from models.llm import PROVIDERS, generate_letter
 from website_oper import finding_jobs
@@ -195,7 +196,9 @@ async def send_job_descriptions_to_chat(
     会进入半死状态，下次 evaluate 直接 hang。详见模块 docstring。
     """
     await finding_jobs.open_browser_with_options(url, browser_type)
+    _emit_progress("browser_started")
     await finding_jobs.log_in()
+    _emit_progress("login_ok")
 
     job_index = 1
     iteration = 0
@@ -211,6 +214,7 @@ async def send_job_descriptions_to_chat(
             job_description = await finding_jobs.get_job_description_by_index(job_index)
             if job_description:
                 consecutive_misses = 0
+                _emit_progress("job_found", index=job_index, jd_preview=job_description[:80])
                 element = await finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 log.info("chat 按钮文字: %r", element)
                 if element == "立即沟通":
@@ -233,11 +237,17 @@ async def send_job_descriptions_to_chat(
                                     "⏭️ [跳过 #%d] LLM 评分 %s/%s: %s",
                                     job_index, details["score"], details["threshold"], details["reason"],
                                 )
+                            _emit_progress(
+                                "job_skipped",
+                                index=job_index,
+                                reason=stage,
+                                detail=details.get("reason", ""),
+                            )
                             job_index += 1
                             await asyncio.sleep(3)
                             continue
                         log.info("✅ [匹配 #%d] 关键词命中: %s", job_index, details["matched_keywords"])
-                        if details.get("score"):
+                        if "score" in details:
                             log.info("   LLM 评分: %s/100 - %s", details["score"], details["reason"])
                     # ====== 过滤结束 ======
 
@@ -270,6 +280,7 @@ async def send_job_descriptions_to_chat(
                             job_description=job_description, letter=response,
                             validation=validation, dry_run=dry_run, sent=False,
                         )
+                        _emit_progress("letter_sent", index=job_index, status="blocked")
                     elif dry_run:
                         log.info(
                             "[DRY-RUN] 招呼语 (%d 字符) 不发送。--- letter ---\n%s\n--------------",
@@ -280,6 +291,7 @@ async def send_job_descriptions_to_chat(
                             job_description=job_description, letter=response,
                             validation=validation, dry_run=True, sent=False,
                         )
+                        _emit_progress("letter_sent", index=job_index, status="dry_run")
                     else:
                         log.info("发送招呼语：%s", response)
                         await asyncio.sleep(1)
@@ -294,6 +306,7 @@ async def send_job_descriptions_to_chat(
                             job_description=job_description, letter=response,
                             validation=validation, dry_run=False, sent=True,
                         )
+                        _emit_progress("letter_sent", index=job_index, status="sent")
             else:
                 consecutive_misses += 1
                 log.info(
@@ -305,6 +318,7 @@ async def send_job_descriptions_to_chat(
                         "连续 %d 个岗位拿不到，推测已到推荐 feed 列表底部，结束",
                         MAX_CONSECUTIVE_MISSES,
                     )
+                    _emit_progress("feed_exhausted", total=job_index - 1)
                     break
 
             await asyncio.sleep(3)
@@ -312,4 +326,9 @@ async def send_job_descriptions_to_chat(
 
         except Exception as e:
             log.exception("主循环抛异常: %s", e)
+            _emit_progress(
+                "error",
+                stage=f"job_index={job_index}",
+                message=f"{type(e).__name__}: {e}",
+            )
             break
