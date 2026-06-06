@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from audit import telemetry as tm
+from boss_zhipin.audit import telemetry as tm
 
 
 # ---------- estimate_cost_cny ----------

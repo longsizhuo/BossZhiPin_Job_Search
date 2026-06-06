@@ -17,7 +17,7 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
-from gui.events import ProgressEvent, emit, set_emit_callback
+from boss_zhipin.gui.events import ProgressEvent, emit, set_emit_callback
 
 log = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from models.prompts import assistant_instructions
+from boss_zhipin.models.prompts import assistant_instructions
 
 load_dotenv()
 log = logging.getLogger(__name__)

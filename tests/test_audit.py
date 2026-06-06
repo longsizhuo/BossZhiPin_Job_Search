@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from audit import (
+from boss_zhipin.audit import (
     BLACKLIST,
     MAX_LEN,
     MIN_LEN,
@@ -85,7 +85,7 @@ class TestLogAttempt:
     def test_writes_jsonl_with_chinese_unescaped(self, tmp_path, monkeypatch):
         # 重定向落盘路径到临时目录
         log_path = tmp_path / "logs" / "letters.jsonl"
-        monkeypatch.setattr("audit.LOG_PATH", log_path)
+        monkeypatch.setattr("boss_zhipin.audit.LOG_PATH", log_path)
 
         validation = validate_letter("您好招聘负责人，我是XX学校的应届生，有三年Python经验。期待沟通。")
         log_attempt(
@@ -118,7 +118,7 @@ class TestLogAttempt:
     def test_creates_parent_directories(self, tmp_path, monkeypatch):
         # logs/ 目录不存在时也要能写
         log_path = tmp_path / "nested" / "deep" / "letters.jsonl"
-        monkeypatch.setattr("audit.LOG_PATH", log_path)
+        monkeypatch.setattr("boss_zhipin.audit.LOG_PATH", log_path)
         validation = ValidationResult(ok=True)
 
         log_attempt(
@@ -135,7 +135,7 @@ class TestLogAttempt:
     def test_appends_multiple_records(self, tmp_path, monkeypatch):
         # 同一文件多次写应该追加，不是覆盖
         log_path = tmp_path / "logs" / "letters.jsonl"
-        monkeypatch.setattr("audit.LOG_PATH", log_path)
+        monkeypatch.setattr("boss_zhipin.audit.LOG_PATH", log_path)
         validation = ValidationResult(ok=True)
 
         for i in range(3):

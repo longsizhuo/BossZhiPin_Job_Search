@@ -39,8 +39,8 @@ from pytauri.ipc import Channel, JavaScriptChannelId
 from pytauri.webview import WebviewWindow
 from pytauri_wheel.lib import builder_factory, context_factory
 
-from gui import log_bridge, runner
-from gui.events import ProgressEvent
+from boss_zhipin.gui import log_bridge, runner
+from boss_zhipin.gui.events import ProgressEvent
 
 SRC_TAURI_DIR = Path(__file__).parent.absolute()
 BOSS_DEV = environ.get("BOSS_TAURI_DEV") == "1"
@@ -81,7 +81,7 @@ async def detect_providers() -> dict[str, list[str]]:
     复用 ``main.py:detect_providers``，避免 CLI 和 GUI 行为分叉。
     """
     # 延迟 import，避免本模块在 CLI 测试里被意外引入
-    import main  # noqa: WPS433
+    from boss_zhipin import cli as main  # noqa: WPS433
 
     return {"providers": main.detect_providers()}
 
@@ -101,10 +101,10 @@ def _build_main_loop_factory(config: RunConfig):
     """
     async def factory():
         # 延迟 import，让没装 ``tauri`` 可选依赖时 import boss_tauri 不立即炸。
-        from main import RECOMMEND_URL, PROVIDER_ENV_KEYS
-        from vectorization import embed_pdf
-        from website_oper.write_response import send_job_descriptions_to_chat
-        from models.job_matcher import extract_keywords_from_text, extract_resume_text
+        from boss_zhipin.cli import RECOMMEND_URL, PROVIDER_ENV_KEYS
+        from boss_zhipin.vectorization import embed_pdf
+        from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat
+        from boss_zhipin.models.job_matcher import extract_keywords_from_text, extract_resume_text
 
         # 同步到 env，业务代码深处读 env 的地方（DRY_RUN / RESUME_PATH 等）也能感知
         if config.dry_run:
@@ -139,7 +139,7 @@ def _build_main_loop_factory(config: RunConfig):
         if provider == "chatgpt":
             # OpenAI 走 Assistants API，需要 client + assistant_id
             from openai import OpenAI
-            from models.openai_assistant import OPENAI_API_KEY, create_assistant
+            from boss_zhipin.models.openai_assistant import OPENAI_API_KEY, create_assistant
 
             chatgpt_model = environ.get("CHATGPT_MODEL", "").strip() or "gpt-4o"
             openai_base_url = environ.get("OPENAI_BASE_URL", "").strip()
@@ -225,7 +225,7 @@ async def stop_run() -> dict[str, str]:
 @commands.command()
 async def shutdown_browser() -> dict[str, str]:
     """关 Chrome——给"完全重置"按钮用。stop_run 之后再调这个才能从头来。"""
-    from website_oper import finding_jobs
+    from boss_zhipin.website_oper import finding_jobs
     await finding_jobs.shutdown()
     return {"status": "ok"}
 
@@ -243,7 +243,7 @@ class EnvField(_CamelModel):
 @commands.command()
 async def get_env_fields() -> dict[str, list[EnvField]]:
     """返回前端 Config 表单的所有字段 + 当前值。"""
-    from gui.env_io import field_meta, read_env
+    from boss_zhipin.gui.env_io import field_meta, read_env
 
     current = read_env()
     fields = [
@@ -265,7 +265,7 @@ class WriteEnvBody(_CamelModel):
 @commands.command()
 async def write_env_fields(body: WriteEnvBody) -> dict[str, str]:
     """把表单的修改写回 .env。"""
-    from gui.env_io import write_env
+    from boss_zhipin.gui.env_io import write_env
     write_env(body.updates)
     return {"status": "saved"}
 
@@ -280,14 +280,14 @@ class _LimitBody(_CamelModel):
 @commands.command()
 async def get_letters(body: _LimitBody) -> dict[str, list[dict]]:
     """读 ``logs/letters.jsonl`` 末尾 ``limit`` 条。"""
-    from gui.history import read_letters
+    from boss_zhipin.gui.history import read_letters
     return {"letters": read_letters(limit=body.limit)}
 
 
 @commands.command()
 async def get_telemetry_summary() -> dict[str, dict]:
     """LLM 调用成本聚合。"""
-    from audit.telemetry import telemetry_summary
+    from boss_zhipin.audit.telemetry import telemetry_summary
     return {"summary": telemetry_summary(since_records=1000)}
 
 

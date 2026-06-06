@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from utils.retry import retry_with_backoff
+from boss_zhipin.utils.retry import retry_with_backoff
 
 
 class TestRetryWithBackoff:
@@ -77,7 +77,7 @@ class TestRetryWithBackoff:
         # 必须重新 import 才能读到新 env
         import importlib
 
-        from utils import retry as r
+        from boss_zhipin.utils import retry as r
         importlib.reload(r)
 
         calls = {"n": 0}

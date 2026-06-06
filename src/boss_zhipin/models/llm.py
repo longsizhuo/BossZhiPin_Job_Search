@@ -17,10 +17,10 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from audit.telemetry import record_llm_call
-from models.prompts import assistant_instructions
-from utils.retry import retry_with_backoff
-from vectorization import VectorStore, embed_pdf
+from boss_zhipin.audit.telemetry import record_llm_call
+from boss_zhipin.models.prompts import assistant_instructions
+from boss_zhipin.utils.retry import retry_with_backoff
+from boss_zhipin.vectorization import VectorStore, embed_pdf
 
 load_dotenv()
 log = logging.getLogger(__name__)

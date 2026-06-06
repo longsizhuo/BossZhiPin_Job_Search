@@ -28,8 +28,18 @@ tauri = [
     "pytauri-wheel==0.8.*",
 ]
 
-[tool.uv]
-package = false
+[project.scripts]
+# uv run boss-zhipin 等价于 uv run python -m boss_zhipin / uv run main.py
+boss-zhipin = "boss_zhipin.cli:_cli_main"
+
+[build-system]
+# Phase D-pre 改造：项目以 src/ 布局变成可安装 package，给 Phase D 用
+# pytauri standalone 把整个包装进 embedded Python interpreter 准备。
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [dependency-groups]
 dev = [
