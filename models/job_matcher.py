@@ -5,12 +5,16 @@
 """
 from __future__ import annotations
 
+import functools
 import logging
-import os
 import re
+import time
 
 from dotenv import load_dotenv
 from pypdf import PdfReader
+
+from audit.telemetry import record_llm_call
+from models.llm import _build_client, _call_chat_completion
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -50,17 +54,43 @@ TECH_KEYWORDS = [
 ]
 
 
+@functools.lru_cache(maxsize=None)
+def _keyword_pattern(keyword: str) -> re.Pattern[str]:
+    """关键词 → 大小写不敏感的匹配 pattern。
+
+    纯 ASCII 关键词（"Go" / "AI" / "API"...）加词边界约束，避免子串误报：
+    "Go" 命中 "Google"、"AI" 命中 "Maintained"、"API" 命中 "Rapid"。
+    首/尾是非字母数字的（".NET" / "C++"）只约束字母数字那一侧，
+    保证 "ASP.NET"、"C++11" 仍能命中。含中文的关键词没有词边界概念，
+    保留子串匹配。
+    """
+    escaped = re.escape(keyword)
+    if keyword.isascii():
+        if keyword[0].isalnum():
+            escaped = r"(?<![A-Za-z0-9])" + escaped
+        if keyword[-1].isalnum():
+            escaped = escaped + r"(?![A-Za-z0-9])"
+    return re.compile(escaped, re.IGNORECASE)
+
+
+def _find_keywords(text: str, keywords: list[str]) -> list[str]:
+    return [kw for kw in keywords if _keyword_pattern(kw).search(text)]
+
+
 def extract_resume_text(pdf_path: str) -> str:
     """从 PDF 简历中提取全文文本。"""
     reader = PdfReader(pdf_path)
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
+def extract_keywords_from_text(resume_text: str) -> list[str]:
+    """从简历全文中提取技术关键词，大小写不敏感。"""
+    return _find_keywords(resume_text, TECH_KEYWORDS)
+
+
 def extract_keywords_from_resume(pdf_path: str) -> list[str]:
     """从简历 PDF 中自动提取关键词，大小写不敏感。"""
-    resume_text = extract_resume_text(pdf_path)
-    resume_upper = resume_text.upper()
-    return [kw for kw in TECH_KEYWORDS if kw.upper() in resume_upper]
+    return extract_keywords_from_text(extract_resume_text(pdf_path))
 
 
 def keyword_match(
@@ -69,8 +99,7 @@ def keyword_match(
     min_match: int = 2,
 ) -> tuple[bool, list[str]]:
     """第一层：关键词粗筛。JD 中至少命中 min_match 个简历关键词才通过。"""
-    jd_upper = job_description.upper()
-    matched = [kw for kw in resume_keywords if kw.upper() in jd_upper]
+    matched = _find_keywords(job_description, resume_keywords)
     return len(matched) >= min_match, matched
 
 
@@ -79,15 +108,16 @@ def llm_match_score(
     resume_text: str,
     matched_keywords: list[str],
 ) -> tuple[int, str]:
-    """第二层：LLM 精筛。评估简历与职位的匹配度，返回 0-100 分。"""
-    from openai import OpenAI
+    """第二层：LLM 精筛。评估简历与职位的匹配度，返回 0-100 分。
 
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    if not api_key:
+    评分链路任何一环不可用（缺 API key / 调用失败 / 回复解析不出分数）
+    都 fail-open 返回 100 放行——宁可少过滤，不能因为评分挂了把职位静默跳过。
+    """
+    try:
+        client, llm_model = _build_client("deepseek")
+    except RuntimeError:
         log.warning("DEEPSEEK_API_KEY 未设置，跳过 LLM 评分")
         return 100, "无法评分（缺少 API key）"
-
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
     prompt = f"""你是一位专业的招聘匹配分析师。请评估以下简历与职位描述的匹配程度。
 
@@ -111,27 +141,47 @@ def llm_match_score(
 - 50-69: 部分匹配，可以尝试
 - 0-49: 匹配度低，不建议投递"""
 
+    # _call_chat_completion 自带指数退避重试；评分调用跟招呼语生成一样
+    # 记 telemetry，不然每个职位多出来的这次调用成本不进 llm_calls.jsonl
+    t0 = time.monotonic()
     try:
-        response = client.chat.completions.create(
-            model="deepseek-chat",
+        response = _call_chat_completion(
+            client,
+            model=llm_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
             max_tokens=200,
         )
-        content = response.choices[0].message.content or ""
     except Exception as e:
+        record_llm_call(
+            provider="deepseek", model=llm_model,
+            input_tokens=0, output_tokens=0,
+            latency_ms=int((time.monotonic() - t0) * 1000),
+            ok=False, error=f"{type(e).__name__}: {e}",
+        )
         log.warning("LLM 评分调用失败: %s", e)
         return 100, f"评分失败（{e}）"
 
-    score = 0
-    reason = ""
-    score_match = re.search(r"分数:\s*(\d+)", content)
-    reason_match = re.search(r"理由:\s*(.+)", content)
-    if score_match:
-        score = min(100, max(0, int(score_match.group(1))))
-    if reason_match:
-        reason = reason_match.group(1).strip()
+    content = response.choices[0].message.content or ""
+    usage = getattr(response, "usage", None)
+    record_llm_call(
+        provider="deepseek", model=llm_model,
+        input_tokens=getattr(usage, "prompt_tokens", 0) if usage else 0,
+        output_tokens=getattr(usage, "completion_tokens", 0) if usage else 0,
+        latency_ms=int((time.monotonic() - t0) * 1000),
+        ok=True,
+    )
 
+    score_match = re.search(r"分数:\s*(\d+)", content)
+    if not score_match:
+        # LLM 没按格式回复时同样 fail-open；fail-closed（按 0 分算）
+        # 会把职位静默跳过，且日志里看不出原因
+        log.warning("LLM 评分回复解析失败，按 100 放行。回复内容: %r", content[:200])
+        return 100, "评分解析失败"
+
+    score = min(100, max(0, int(score_match.group(1))))
+    reason_match = re.search(r"理由:\s*(.+)", content)
+    reason = reason_match.group(1).strip() if reason_match else ""
     return score, reason
 
 
