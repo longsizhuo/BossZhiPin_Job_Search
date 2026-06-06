@@ -10,7 +10,6 @@ API key 字段在前端 mask（password input），后端不主动 mask——前
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
 
 from dotenv import dotenv_values, set_key, unset_key
 
@@ -36,6 +35,9 @@ def _env_path() -> Path:
     return Path(".env")
 
 
+_ALLOWED_KEYS: frozenset[str] = frozenset(k for k, _, _ in KNOWN_KEYS)
+
+
 def read_env() -> dict[str, str]:
     """返回 .env 里已经设了的 key → value。
 
@@ -47,7 +49,7 @@ def read_env() -> dict[str, str]:
     if not path.is_file():
         return {}
     raw = dotenv_values(path)
-    return {k: v for k, v in raw.items() if v is not None and k in {kk for kk, _, _ in KNOWN_KEYS}}
+    return {k: v for k, v in raw.items() if v is not None and k in _ALLOWED_KEYS}
 
 
 def write_env(updates: dict[str, str]) -> None:
@@ -59,9 +61,8 @@ def write_env(updates: dict[str, str]) -> None:
     """
     path = _env_path()
     path.touch(exist_ok=True)
-    allowed = {k for k, _, _ in KNOWN_KEYS}
     for k, v in updates.items():
-        if k not in allowed:
+        if k not in _ALLOWED_KEYS:
             continue
         if v == "":
             try:
