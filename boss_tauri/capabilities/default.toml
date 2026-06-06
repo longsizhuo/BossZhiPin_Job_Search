@@ -1,0 +1,9 @@
+# 不传 pytauri:default Tauri ACL 会把所有 pyInvoke 拦掉。
+# 参考：project-pytauri-capabilities memory。
+identifier = "default"
+description = "Capability for the main window"
+windows = ["main"]
+permissions = [
+    "core:default",
+    "pytauri:default",
+]

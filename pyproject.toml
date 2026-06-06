@@ -18,6 +18,16 @@ dependencies = [
     "nodriver>=0.48.1",
 ]
 
+[project.optional-dependencies]
+# Tauri 桌面 App 才需要的额外依赖。CLI 模式（uv run main.py）不需要装。
+# 安装方式：uv sync --extra tauri
+tauri = [
+    "pydantic>=2.0",
+    "anyio>=4.0",
+    "pytauri==0.8.*",
+    "pytauri-wheel==0.8.*",
+]
+
 [tool.uv]
 package = false
 
