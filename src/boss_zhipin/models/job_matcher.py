@@ -13,8 +13,8 @@ import time
 from dotenv import load_dotenv
 from pypdf import PdfReader
 
-from audit.telemetry import record_llm_call
-from models.llm import _build_client, _call_chat_completion
+from boss_zhipin.audit.telemetry import record_llm_call
+from boss_zhipin.models.llm import _build_client, _call_chat_completion
 
 load_dotenv()
 log = logging.getLogger(__name__)

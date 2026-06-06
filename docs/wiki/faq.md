@@ -62,7 +62,7 @@ echo 'CHATGPT_MODEL=gpt-4o-mini' >> .env
 ## 代码 / 开发
 
 ### 我想加新的 provider（比如 Kimi）
-1. 编辑 [`models/llm.py`](../../models/llm.py)，在 `PROVIDERS` 字典加一行：
+1. 编辑 [`src/boss_zhipin/models/llm.py`](../../src/boss_zhipin/models/llm.py)，在 `PROVIDERS` 字典加一行：
    ```python
    "kimi": {
        "base_url": "https://api.moonshot.cn/v1",
@@ -70,10 +70,10 @@ echo 'CHATGPT_MODEL=gpt-4o-mini' >> .env
        "default_model": "moonshot-v1-8k",
    },
    ```
-2. 同步改 `main.py` 的 `PROVIDER_ENV_KEYS` 和 `PROVIDER_SIGNUP`
+2. 同步改 `src/boss_zhipin/cli.py` 的 `PROVIDER_ENV_KEYS` 和 `PROVIDER_SIGNUP`
 3. 改 `.env.example` 加注释和申请链接
 4. 写一个测试用例确认 `pick_provider` 能识别它
-5. 改 [`audit/telemetry.py`](../../audit/telemetry.py) 的 `PRICING_CNY_PER_M_TOKENS`
+5. 改 [`src/boss_zhipin/audit/telemetry.py`](../../src/boss_zhipin/audit/telemetry.py) 的 `PRICING_CNY_PER_M_TOKENS`
    加上 Kimi 的价格表
 
 ### 测试时怎么 mock LLM 调用？

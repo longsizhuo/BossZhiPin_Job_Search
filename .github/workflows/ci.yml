@@ -39,23 +39,27 @@ jobs:
         # 没有真测试也能拦下"改名 / 移文件 / import 烂掉"那一类回归。
         # 每多一个核心模块就往这里加一行。
         run: |
+          # Phase D-pre 后：业务代码全部进 boss_zhipin/，根目录 main.py 仅
+          # 是向后兼容 shim。CI 同时校验两侧：(1) 包导入，(2) main.py shim 能 import。
           uv run python -c "import main"
-          uv run python -c "from audit import validate_letter, log_attempt"
-          uv run python -c "from audit.telemetry import record_llm_call, telemetry_summary, estimate_cost_cny"
-          uv run python -c "from utils.retry import retry_with_backoff"
-          uv run python -c "from vectorization import VectorStore, embed_pdf, file_hash, split_text"
-          uv run python -c "from models.llm import PROVIDERS, generate_letter, _build_client"
-          uv run python -c "from models.openai_assistant import create_assistant, OPENAI_API_KEY"
-          uv run python -c "from models.prompts import assistant_instructions"
-          uv run python -c "from models.job_matcher import should_apply, keyword_match, llm_match_score, extract_keywords_from_text, extract_resume_text"
-          uv run python -c "from website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message, shutdown"
-          uv run python -c "from website_oper.write_response import send_job_descriptions_to_chat, chat"
+          uv run python -c "import boss_zhipin"
+          uv run python -c "from boss_zhipin.cli import _cli_main, detect_providers, pick_provider, RECOMMEND_URL, PROVIDER_ENV_KEYS"
+          uv run python -c "from boss_zhipin.audit import validate_letter, log_attempt"
+          uv run python -c "from boss_zhipin.audit.telemetry import record_llm_call, telemetry_summary, estimate_cost_cny"
+          uv run python -c "from boss_zhipin.utils.retry import retry_with_backoff"
+          uv run python -c "from boss_zhipin.vectorization import VectorStore, embed_pdf, file_hash, split_text"
+          uv run python -c "from boss_zhipin.models.llm import PROVIDERS, generate_letter, _build_client"
+          uv run python -c "from boss_zhipin.models.openai_assistant import create_assistant, OPENAI_API_KEY"
+          uv run python -c "from boss_zhipin.models.prompts import assistant_instructions"
+          uv run python -c "from boss_zhipin.models.job_matcher import should_apply, keyword_match, llm_match_score, extract_keywords_from_text, extract_resume_text"
+          uv run python -c "from boss_zhipin.website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message, shutdown"
+          uv run python -c "from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat, chat"
           uv run python -c "from scripts.dump_boss_page import PROBE_JS, TARGET_URL, main"
-          uv run python -c "from gui.events import ProgressEvent, EventKind, emit, set_emit_callback"
-          uv run python -c "from gui.runner import start_run, stop_run, is_running, get_task, reset"
-          uv run python -c "from gui.log_bridge import CallbackHandler, install, uninstall"
-          uv run python -c "from gui.env_io import read_env, write_env, field_meta, KNOWN_KEYS"
-          uv run python -c "from gui.history import read_letters"
+          uv run python -c "from boss_zhipin.gui.events import ProgressEvent, EventKind, emit, set_emit_callback"
+          uv run python -c "from boss_zhipin.gui.runner import start_run, stop_run, is_running, get_task, reset"
+          uv run python -c "from boss_zhipin.gui.log_bridge import CallbackHandler, install, uninstall"
+          uv run python -c "from boss_zhipin.gui.env_io import read_env, write_env, field_meta, KNOWN_KEYS"
+          uv run python -c "from boss_zhipin.gui.history import read_letters"
 
       - name: 跑 pytest
         run: uv run pytest tests/ -v --tb=short

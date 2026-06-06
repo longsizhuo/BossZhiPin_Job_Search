@@ -11,7 +11,7 @@
 
 .. code-block:: python
 
-    from utils.retry import retry_with_backoff
+    from boss_zhipin.utils.retry import retry_with_backoff
 
     @retry_with_backoff(max_attempts=3)
     def call_llm(...):

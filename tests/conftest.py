@@ -1,7 +1,8 @@
 """pytest 公共配置。
 
-- 把项目根目录加进 ``sys.path``，让 ``import main`` / ``import audit`` 这种顶层
-  导入不依赖 ``uv pip install -e .`` 也能跑。
+- Phase D-pre 后：项目以 src/ 布局变成可安装 package，``uv sync`` 会把
+  ``boss_zhipin`` editable install 进 .venv，``from boss_zhipin import X``
+  不需要 sys.path 注入也能 import。这里不再 manipulate sys.path。
 - **主动清空所有项目相关 env 变量**，让测试不被本机 .env / shell export
   污染。包括 provider key、用户输入兜底、以及 retry 装饰器在 import time
   读取的 ``BOSS_RETRY_*`` 那几个。
@@ -11,12 +12,6 @@
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 # 项目所有读 env 的位置（provider key / 用户输入兜底 / retry 默认值 /
@@ -35,7 +30,7 @@ _PROJECT_ENV_VARS = (
     "LETTER_LOG_PATH", "BOSS_LLM_TELEMETRY_PATH", "BOSS_CHROME_PROFILE",
     # letter 校验边界
     "LETTER_MIN_LEN", "LETTER_MAX_LEN",
-    # main.py 用的全局 log 级
+    # boss_zhipin.cli 用的全局 log 级
     "LOGLEVEL", "DRY_RUN",
 )
 for _key in _PROJECT_ENV_VARS:

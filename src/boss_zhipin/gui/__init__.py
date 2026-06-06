@@ -1,6 +1,6 @@
-"""GUI 层共享工具——给 ``boss_tauri`` (PyTauri 桌面 App) 用，**不依赖** PyTauri 本身。
+"""GUI 层共享工具——给 ``boss_zhipin.tauri`` (PyTauri 桌面 App) 用，**不依赖** PyTauri 本身。
 
-CLI ``main.py`` 不调本包；CLI 行为不受 ``gui/`` 任何代码影响。
+CLI ``boss_zhipin.cli`` 不调本包；CLI 行为不受 ``gui/`` 任何代码影响。
 
 模块清单：
 
@@ -15,12 +15,12 @@ CLI ``main.py`` 不调本包；CLI 行为不受 ``gui/`` 任何代码影响。
 - ``env_io`` —— 读/写 ``.env`` 表单字段（GUI Config tab 用）。
 - ``history`` —— 读 ``logs/letters.jsonl`` 末尾 N 条（GUI History tab 用）。
 
-桌面 App 入口在 ``boss_tauri/__init__.py``：``uv sync --extra tauri`` 后
-``uv run python -m boss_tauri``。
+桌面 App 入口在 ``boss_zhipin/tauri/__init__.py``：``uv sync --extra tauri`` 后
+``uv run python -m boss_zhipin.tauri``。
 
 关键约束（见 ``project-nicegui-uvloop-incompat`` memory）：
 - PyTauri 起 app 时必须 ``start_blocking_portal("asyncio")``，不能 trio /
   uvloop——uvloop 跟 nodriver 的 Chrome stop+restart 不兼容。
-- ``boss_tauri/capabilities/default.toml`` 必须 grant ``pytauri:default``，
+- ``boss_zhipin/tauri/capabilities/default.toml`` 必须 grant ``pytauri:default``，
   否则前端 ``pyInvoke`` 全部被 Tauri ACL 拦。
 """

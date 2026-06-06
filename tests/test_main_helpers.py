@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-import main
+from boss_zhipin import cli as main  # test 内继续叫 main，少改
 
 
 # ---------- detect_providers ----------

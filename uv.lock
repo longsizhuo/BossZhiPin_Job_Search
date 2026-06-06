@@ -120,7 +120,7 @@ wheels = [
 [[package]]
 name = "boss-zhipin-job-search"
 version = "0.3.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "chromadb" },
     { name = "nodriver" },

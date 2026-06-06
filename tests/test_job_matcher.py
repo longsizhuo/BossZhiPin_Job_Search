@@ -12,8 +12,8 @@ import types
 
 import pytest
 
-from models import job_matcher
-from models.job_matcher import (
+from boss_zhipin.models import job_matcher
+from boss_zhipin.models.job_matcher import (
     extract_keywords_from_text,
     keyword_match,
     llm_match_score,

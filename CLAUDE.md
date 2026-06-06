@@ -40,20 +40,24 @@
 
 ```
 .
-├── main.py                       # 入口，env 校验 + provider 路由
-├── audit/
-│   ├── __init__.py               # validate_letter / log_attempt（招呼语审核）
-│   └── telemetry.py              # LLM 调用 telemetry（成本/时长/token 落盘）
-├── models/
-│   ├── llm.py                    # provider 配置 + DeepSeek/Claude RAG 调用
-│   ├── openai_assistant.py       # OpenAI Assistants 模式
-│   └── prompts.py                # 招呼语 prompt 模板
-├── utils/
-│   └── retry.py                  # 指数退避重试装饰器
-├── vectorization.py              # 简历 PDF → chroma 向量化 + 召回
-├── website_oper/
-│   ├── finding_jobs.py           # nodriver 浏览器自动化
-│   └── write_response.py         # 主循环：JD → LLM → 校验 → 发送/日志
+├── main.py                       # 兼容 shim，委托 boss_zhipin.cli（uv run main.py 仍可用）
+├── src/boss_zhipin/              # 业务代码都在这个可安装 package 里（src/ 布局）
+│   ├── cli.py                    # CLI 入口，env 校验 + provider 路由（run_provider 是 CLI/GUI 共用的主循环入口）
+│   ├── audit/
+│   │   ├── __init__.py           # validate_letter / log_attempt（招呼语审核）
+│   │   └── telemetry.py          # LLM 调用 telemetry（成本/时长/token 落盘）
+│   ├── models/
+│   │   ├── llm.py                # provider 配置 + DeepSeek/Claude RAG 调用
+│   │   ├── openai_assistant.py   # OpenAI Assistants 模式
+│   │   └── prompts.py            # 招呼语 prompt 模板
+│   ├── utils/
+│   │   └── retry.py              # 指数退避重试装饰器
+│   ├── vectorization.py          # 简历 PDF → chroma 向量化 + 召回
+│   ├── website_oper/
+│   │   ├── finding_jobs.py       # nodriver 浏览器自动化
+│   │   └── write_response.py     # 主循环：JD → LLM → 校验 → 发送/日志
+│   ├── gui/                      # 桌面 App 胶水层（events/runner/log_bridge/env_io/history）
+│   └── tauri/                    # PyTauri 桌面 App（python -m boss_zhipin.tauri）
 ├── tests/                        # pytest 单测，每个核心模块对应一个 test_X.py
 ├── docs/wiki/                    # 中文 wiki + ADR
 ├── .github/workflows/ci.yml      # GitHub Actions

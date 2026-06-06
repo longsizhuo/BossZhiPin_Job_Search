@@ -26,12 +26,12 @@ import logging
 import re
 import time
 
-from audit import log_attempt, validate_letter
-from audit.telemetry import record_llm_call
-from gui.events import emit as _emit_progress
-from models.job_matcher import should_apply
-from models.llm import PROVIDERS, generate_letter
-from website_oper import finding_jobs
+from boss_zhipin.audit import log_attempt, validate_letter
+from boss_zhipin.audit.telemetry import record_llm_call
+from boss_zhipin.gui.events import emit as _emit_progress
+from boss_zhipin.models.job_matcher import should_apply
+from boss_zhipin.models.llm import PROVIDERS, generate_letter
+from boss_zhipin.website_oper import finding_jobs
 
 log = logging.getLogger(__name__)
 
