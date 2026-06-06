@@ -6,6 +6,7 @@
 - [常见故障排查](troubleshooting.md) —— Chrome 闪退 / 反爬触发 / 卡登录页 等
 - [FAQ](faq.md) —— 跟使用 / 选 provider / 调 prompt 相关的常见问题
 - [Debugging Playbook](debugging-playbook.md) —— 难 bug 怎么查（agent 视角 + 指挥方视角）
+- [Postmortem 2026-05-13: CDP hang](postmortem-2026-05-13-cdp-hang.md) —— sync facade 跟 nodriver CDP 不兼容那次 bug 的完整复盘
 
 ## Architecture Decision Records (ADR)
 
