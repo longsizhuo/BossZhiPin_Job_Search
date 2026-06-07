@@ -45,7 +45,7 @@
 
 两份 capabilities / 四处版本号靠 `tests/test_standalone_sync.py` 守卫。
 
-## 构建：只能走 `scripts/build_standalone.sh`
+## 构建：只能走 `scripts/build_standalone.{sh,ps1}`
 
 **不要手工跑其中某几步。** 2026-06-07 的第一次手工构建漏了
 `PYO3_PYTHON` + `RUSTFLAGS`，pyo3 自动探测到系统 CLT 的
@@ -63,6 +63,31 @@
 5. `tauri build --config src-tauri/tauri.bundle.json -- --profile bundle-release`
    （独立 profile，不污染 `tauri dev` 的 target/release；bundle resources
    把 `pyembed/python` 整个拷进 .app 的 Resources/）
+
+### Windows standalone（`scripts/build_standalone.ps1`）
+
+跟 macOS 平行的 PowerShell 脚本。前置：Visual Studio Build Tools（含
+"Desktop development with C++" workload，给 MSVC 链接器）/ uv / pnpm。
+
+与 `.sh` 的关键差异：
+
+| 步骤 | macOS | Windows |
+|---|---|---|
+| 嵌入 Python 布局 | `python/bin/python3` + `lib/libpython3.X.dylib` | `python\python.exe` + `python\python313.dll` + `python\libs\python313.lib` |
+| libpython rpath 补丁 | `install_name_tool -id @rpath/...` | **不需要**——PE 加载器同目录优先 |
+| `RUSTFLAGS` rpath | `-Wl,-rpath,@executable_path/../Resources/lib` | **不需要** |
+| `RUSTFLAGS` 链接路径 | `-L pyembed/python/lib`（libpython 给 pyo3 链） | `-L native=pyembed\python\libs`（python313.lib 给 pyo3 链） |
+| Bundle target | `.app` + `.dmg` | NSIS `*-setup.exe` + MSI `*.msi`（看 tauri.conf.json） |
+| 自检 | `otool -L` 看没链 `Python3.framework` | PE IMPORTS 只记 DLL 文件名不记路径，自检退化成"找产物 + 列安装器"；真正的链对/链错要等装一遍 installer，开 Process Explorer 看加载的 `python313.dll` 路径 |
+
+风险点（暂未实测，标 TODO）：
+
+- `tauri.bundle.json` 的 `"pyembed/python": "./"` 在 Windows 的 NSIS/MSI 里
+  把 `python313.dll` 放在跟 `boss-zhipin.exe` 同级——这是 DLL 同目录优先
+  解析能命中的位置。如果改成放 `resources/` 子目录，启动会找不到 DLL。
+- `RUSTFLAGS` 按 whitespace 切，路径里有空格（``C:\Program Files\...``）
+  会炸。本仓库默认在无空格盘下（`E:\BossZhiPin_Job_Search`），不预先优化；
+  以后真踩到再换 `CARGO_ENCODED_RUSTFLAGS`。
 
 ## 体积
 
