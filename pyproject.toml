@@ -1,6 +1,6 @@
 [project]
 name = "boss-zhipin-job-search"
-version = "0.3.0"
+version = "0.3.1"
 description = "Auto-apply for jobs on Boss ZhiPin with LLM-generated cover letters."
 readme = "README.md"
 requires-python = ">=3.11"

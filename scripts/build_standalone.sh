@@ -109,4 +109,30 @@ if otool -L "$BIN" | grep -q "Python3.framework"; then
     exit 1
 fi
 otool -L "$BIN" | grep -i python || true
+
+# ---------- 7. codesign 自检（ad-hoc 签名由 tauri 自动完成）----------
+# tauri.conf.json 里 bundle.macOS.signingIdentity = "-" 告诉 tauri 在 bundle
+# 阶段做 ad-hoc 签名（无需 Apple Developer 账号）。**不签会触发 macOS
+# Sequoia 的 "damaged and can't be opened" 误报**——Sequoia 对未签名 +
+# quarantine xattr 的 .app 直接报 damaged，"右键→打开" 也绕不过去。
+# ad-hoc 签完之后会回到老的 "无法验证开发者" 对话框，右键→打开能绕过。
+echo "==> codesign 自检（应该是 ad-hoc 已签）"
+# codesign -dv 把签名状态写到 stderr；用 Signature=adhoc 行作为判定锚点。
+sig_info=$(codesign -dv "$APP" 2>&1 || true)
+if echo "$sig_info" | grep -q "Signature=adhoc"; then
+    echo "  ✓ ad-hoc 签名生效（$(echo "$sig_info" | grep -E '^Signature='))"
+elif echo "$sig_info" | grep -q "code object is not signed"; then
+    echo "❌ .app **未签名**——检查 tauri.conf.json 的 bundle.macOS.signingIdentity 是不是 \"-\""
+    exit 1
+else
+    echo "⚠️  签名状态不是 ad-hoc，可能是别的 identity（也行，只要 codesign --verify 过）："
+    echo "$sig_info" | grep -E '^(Signature|Authority|Identifier)='
+fi
+# 跑一遍 verify 兜底
+if ! codesign --verify "$APP" 2>/dev/null; then
+    echo "❌ codesign --verify 失败"
+    codesign --verify --verbose=2 "$APP" 2>&1 | head -10
+    exit 1
+fi
+
 echo "✅ 构建完成：$APP"

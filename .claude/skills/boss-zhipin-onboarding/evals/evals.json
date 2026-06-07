@@ -28,6 +28,12 @@
       "name": "dmg-gatekeeper-blocked",
       "prompt": "我从 GitHub Releases 下载了 BOSS.Zhipin.Helper_0.3.0_aarch64.dmg，双击装好了。但是我打开 Applications 里的 BOSS Zhipin Helper 双击之后弹了个框说\"无法打开「BOSS Zhipin Helper」，因为无法验证开发者\"，只能取消，没有打开的选项。我是不是下载到病毒了？我用的是 macOS Sequoia 的 M2 MacBook Air，第一次用这种没在 App Store 上架的 App。",
       "expected_output": "Agent 应该：(1) 先安抚——这是 macOS Gatekeeper 的正常行为，**不是病毒**，是因为本项目还没花 Apple Developer ID 签名；(2) 给出**最简单的解法**：去 Applications 找到这个 App **右键 → 选「打开」**（不是双击）→ 弹窗会出现「打开」按钮（双击没有这个按钮）；(3) 如果右键打开还被拦（macOS Sequoia 更严），给终端命令 `xattr -dr com.apple.quarantine \"/Applications/BOSS Zhipin Helper.app\"` 解 quarantine 属性；(4) 解释这步只用做一次，之后双击就能开；(5) **不要建议**用户去 disable 整个 Gatekeeper（spctl --master-disable），那样太激进；(6) **不要建议**用户改去走 clone + uv 的 dev 路径——他明显是非开发者；(7) 引导他打开后切到配置 tab 填 DEEPSEEK_API_KEY（如果他还没 key，再走 API key 申请流程）。"
+    },
+    {
+      "id": 5,
+      "name": "dmg-damaged-sequoia",
+      "prompt": "我装了 BOSS Zhipin Helper（应该是 0.3.0），双击启动它弹出说 “BOSS Zhipin Helper” is damaged and can’t be opened. You should move it to the Bin. 然后只有一个 Move to Bin 按钮，连「取消」都没有。我下载到病毒了吗？是不是文件本身坏了我要重下？我 macOS Sequoia 26。",
+      "expected_output": "Agent 应该：(1) 先安抚——这**不是病毒、文件也没坏**，是 macOS Sequoia 对未签名 + 带 quarantine xattr 的 .app 的误报；(2) 解释 v0.3.0 的 .app 当时是完全未签名的，v0.3.1 已经加了 ad-hoc 签名修复这个；(3) 给两条路：(A) **推荐**：去 https://github.com/longsizhuo/BossZhiPin_Job_Search/releases/latest 下 v0.3.1+ 的 DMG 重装，应该不再报 damaged；(B) 临时解：保留现在的 v0.3.0，终端跑 `xattr -dr com.apple.quarantine \"/Applications/BOSS Zhipin Helper.app\"` 把 quarantine 标志拆掉就能开；(4) 解释 'right-click → Open' 这条招在 Sequoia 上对未签名 .app **已经失效**，所以才看不到「取消」选项；(5) **绝不要**建议用户 disable 整个 Gatekeeper / spctl --master-disable / 关 SIP；(6) **不要**建议用户去 clone 源码自己 build。"
     }
   ]
 }
