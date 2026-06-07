@@ -2,9 +2,11 @@
 
 **两种运行模式**，靠 ``BOSS_TAURI_STANDALONE`` env var 区分：
 
-1. **Wheel dev 模式**（默认）：``uv sync --extra tauri && uv run python -m
-   boss_zhipin.tauri``。Python 进程是主进程，``pytauri-wheel`` 提供 Tauri
-   Rust binary。Tauri.toml / capabilities / frontend 从本包 source 目录读。
+1. **Wheel dev 模式**（默认）：``uv sync && uv run python -m boss_zhipin.tauri``。
+   tauri 组在 ``[tool.uv].default-groups`` 里，``uv sync`` 默认就装上；CLI-only
+   用户可以 ``uv sync --no-group tauri`` 跳过。Python 进程是主进程，
+   ``pytauri-wheel`` 提供 Tauri Rust binary。Tauri.toml / capabilities /
+   frontend 从本包 source 目录读。
 
 2. **Standalone 模式**（Phase D 打包后的 .app）：Rust binary 是主进程，
    embed Python interpreter，启动时 set ``BOSS_TAURI_STANDALONE=1``，再
@@ -83,10 +85,15 @@ class StartRunBody(_CamelModel):
 async def detect_providers() -> dict[str, list[str]]:
     """前端用来填 provider 下拉——返回当前 env 里配了哪些 API key。
 
-    复用 ``boss_zhipin.cli:detect_providers``，避免 CLI 和 GUI 行为分叉。
+    **不能 import boss_zhipin.cli**：cli top-level 会拉起 vectorization →
+    sentence_transformers → torch，import 一次 3-10 秒。这个命令在 app 启动
+    时就被 Run 页的 useEffect 触发，会阻塞 portal 的 asyncio loop，导致用户
+    切到 Config 页时 ``get_env_fields`` IPC 一直排队 → 看上去"Config 一直
+    loading"。
+
+    所以从 ``boss_zhipin.providers``（轻模块，只依赖 os）走。
     """
-    # 延迟 import，避免本模块在 CLI 测试里被意外引入
-    from boss_zhipin.cli import detect_providers as _detect_providers  # noqa: WPS433
+    from boss_zhipin.providers import detect_providers as _detect_providers  # noqa: WPS433
 
     return {"providers": _detect_providers()}
 

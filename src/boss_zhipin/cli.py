@@ -31,16 +31,18 @@ from openai import OpenAI
 
 from boss_zhipin.models.job_matcher import extract_keywords_from_text, extract_resume_text
 from boss_zhipin.models.openai_assistant import OPENAI_API_KEY, create_assistant
+# PROVIDER_ENV_KEYS / PROVIDER_SIGNUP / detect_providers 抽到 boss_zhipin.providers
+# 让 PyTauri 的 detect_providers 命令不被 cli.py 的重 import 链拖累
+# （cli 的 vectorization import 会触发 sentence_transformers → torch，3-10s）。
+from boss_zhipin.providers import (
+    PROVIDER_ENV_KEYS,
+    PROVIDER_SIGNUP,
+    detect_providers,
+)
 from boss_zhipin.vectorization import embed_pdf
 from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat
 
 log = logging.getLogger(__name__)
-
-PROVIDER_ENV_KEYS: dict[str, str] = {
-    "deepseek": "DEEPSEEK_API_KEY",
-    "chatgpt": "OPENAI_API_KEY",
-    "claude": "ANTHROPIC_API_KEY",
-}
 
 # BOSS 推荐 feed 入口。CLI 和 GUI 都从这里进。
 RECOMMEND_URL = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-recommend"
@@ -48,15 +50,17 @@ RECOMMEND_URL = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-rec
 # 简历默认路径。CLI（ensure_resume_path）和 GUI（tauri 的 factory）共用。
 DEFAULT_RESUME_PATH = "resume/my_cover.pdf"
 
-PROVIDER_SIGNUP: dict[str, str] = {
-    "deepseek": "https://platform.deepseek.com/api_keys",
-    "chatgpt": "https://platform.openai.com/api-keys",
-    "claude": "https://console.anthropic.com/settings/keys",
-}
-
-
-def detect_providers() -> list[str]:
-    return [name for name, env in PROVIDER_ENV_KEYS.items() if os.getenv(env)]
+__all__ = [
+    "PROVIDER_ENV_KEYS",
+    "PROVIDER_SIGNUP",
+    "detect_providers",
+    "RECOMMEND_URL",
+    "DEFAULT_RESUME_PATH",
+    "pick_provider",
+    "ensure_usr_name",
+    "ensure_resume_path",
+    "run_provider",
+]
 
 
 def pick_provider() -> str:

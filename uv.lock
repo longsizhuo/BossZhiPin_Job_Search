@@ -137,6 +137,11 @@ standalone = [
     { name = "pydantic" },
     { name = "pytauri" },
 ]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
 tauri = [
     { name = "anyio" },
     { name = "pydantic" },
@@ -144,32 +149,29 @@ tauri = [
     { name = "pytauri-wheel" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "anyio", marker = "extra == 'standalone'", specifier = ">=4.0" },
-    { name = "anyio", marker = "extra == 'tauri'", specifier = ">=4.0" },
     { name = "chromadb", specifier = ">=0.6.3" },
     { name = "nodriver", specifier = ">=0.48.1" },
     { name = "openai", specifier = ">=1.70.0" },
     { name = "packaging", specifier = ">=24.2" },
     { name = "pydantic", marker = "extra == 'standalone'", specifier = ">=2.0" },
-    { name = "pydantic", marker = "extra == 'tauri'", specifier = ">=2.0" },
     { name = "pypdf", specifier = ">=5.4.0" },
     { name = "pytauri", marker = "extra == 'standalone'", specifier = "==0.8.*" },
-    { name = "pytauri", marker = "extra == 'tauri'", specifier = "==0.8.*" },
-    { name = "pytauri-wheel", marker = "extra == 'tauri'", specifier = "==0.8.*" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "sentence-transformers", specifier = ">=3.0.0" },
 ]
-provides-extras = ["tauri", "standalone"]
+provides-extras = ["standalone"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.0.3" }]
+tauri = [
+    { name = "anyio", specifier = ">=4.0" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytauri", specifier = "==0.8.*" },
+    { name = "pytauri-wheel", specifier = "==0.8.*" },
+]
 
 [[package]]
 name = "build"

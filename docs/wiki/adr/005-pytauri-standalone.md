@@ -7,7 +7,7 @@
 ## 背景
 
 桌面 GUI（PyTauri）此前只有 wheel dev 模式：用户必须 clone 仓库、装 uv、
-`uv sync --extra tauri` 再 `uv run python -m boss_zhipin.tauri`。对目标用户
+`uv sync` 再 `uv run python -m boss_zhipin.tauri`。对目标用户
 （找工作的非程序员朋友）这条链路太长——Phase D 的目标是发一个**双击就能跑**
 的 .app。
 

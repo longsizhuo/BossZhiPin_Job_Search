@@ -19,18 +19,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Tauri 桌面 App 才需要的额外依赖。CLI 模式（uv run main.py）不需要装。
-# 安装方式：uv sync --extra tauri
-tauri = [
-    "pydantic>=2.0",
-    "anyio>=4.0",
-    "pytauri==0.8.*",
-    "pytauri-wheel==0.8.*",
-]
 # Phase D standalone .app 的嵌入式 Python 环境用：跟 tauri 一样但**不带**
 # pytauri-wheel——standalone 模式 ext_mod 由我们自己的 Rust binary 提供，
 # 不需要 wheel 里那份预编译 binary（白占几十 MB）。
-# 用法见 scripts/build_standalone.sh。
+# 用法见 scripts/build_standalone.sh（``uv pip install '$REPO[standalone]'``）。
+# 留在 optional-dependencies（不挪到 dependency-groups）是因为 PEP 508
+# ``pkg[extras]`` 语法只认 optional-dependencies。
 standalone = [
     "pydantic>=2.0",
     "anyio>=4.0",
@@ -69,3 +63,20 @@ pythonpath = ["src"]
 dev = [
     "pytest>=9.0.3",
 ]
+# Tauri 桌面 App 依赖。放在 dependency-groups（而不是 optional-dependencies）
+# 是为了能进 ``[tool.uv].default-groups``——这样裸 ``uv sync`` 也会装上，
+# 用户不用记 ``--extra tauri``。CLI-only 用户可以 ``uv sync --no-group tauri``
+# 跳过。
+tauri = [
+    "pydantic>=2.0",
+    "anyio>=4.0",
+    "pytauri==0.8.*",
+    "pytauri-wheel==0.8.*",
+]
+
+[tool.uv]
+# 默认就装 tauri 组——桌面 App 是主交互方式，让 ``uv sync`` 开箱即用。
+# 不想装的（纯 CLI / CI 跑测试）：``uv sync --no-group tauri``。
+# 注意：dev 也得显式列出，因为这里一旦设了 default-groups，uv 不再自动
+# 包含 dev 组。
+default-groups = ["dev", "tauri"]

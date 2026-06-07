@@ -55,9 +55,12 @@ uv run main.py
 两种跑法（设计细节见 [ADR-005](docs/wiki/adr/005-pytauri-standalone.md)）：
 
 ```bash
-# 开发模式：Python 主进程 + pytauri-wheel
-uv sync --extra tauri
+# 开发模式：Python 主进程 + pytauri-wheel（uv sync 默认就装 tauri 组）
+uv sync
 uv run python -m boss_zhipin.tauri
+
+# 不想装桌面 App 那一坨（纯 CLI 用户）：
+# uv sync --no-group tauri
 
 # Standalone .app（macOS）：打一个双击就能跑的 bundle
 ./scripts/build_standalone.sh
