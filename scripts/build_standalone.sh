@@ -21,6 +21,18 @@ PYTHON_SERIES="3.13"   # 跟 pyproject requires-python 对齐
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "❌ 目前只支持 macOS（Linux/Windows 的 rpath / install_name 处理不同）"
+    echo "   Windows 端用 scripts/build_standalone.ps1"
+    exit 1
+fi
+
+# Cargo.lock v4 需要 Cargo >=1.78，老版本在 step 5 才炸太晚
+cargo_ver=$(cargo --version 2>/dev/null | sed -n 's/cargo \([0-9]*\)\.\([0-9]*\).*/\1.\2/p')
+if [[ -z "$cargo_ver" ]]; then
+    echo "❌ 找不到 cargo，请先装 rustup"; exit 1
+fi
+cargo_major=${cargo_ver%.*}; cargo_minor=${cargo_ver#*.}
+if (( cargo_major < 1 || (cargo_major == 1 && cargo_minor < 78) )); then
+    echo "❌ Cargo $cargo_ver 太老（需 >=1.78 解析 lockfile v4），跑 'rustup update stable'"
     exit 1
 fi
 
@@ -52,10 +64,14 @@ echo "==> libpython install_name 已设为 @rpath/$(basename "$libpython")"
 # ---------- 3. 把业务包 + 依赖装进嵌入式环境 ----------
 # [standalone] extra：pytauri 但不带 pytauri-wheel（ext_mod 由我们的 Rust
 # binary 提供）。--exact 保证环境里只有声明过的东西。
+# --break-system-packages：uv 把 python-build-standalone 标 PEP 668
+# "externally managed"，默认拒绝 pip 写入；本场景就是要往里写，加 flag 放行。
+# （2026-06-07 在 Windows 端 .ps1 上踩到，mac 上当时 uv 版本旧没拦，新 uv 两边都会拦。）
 echo "==> 安装 boss_zhipin + 依赖到 pyembed（首次会拉 torch，较慢）"
 PYTAURI_STANDALONE=1 uv pip install \
     --exact \
     --compile-bytecode \
+    --break-system-packages \
     --python="$EMBED_PY" \
     --reinstall-package=boss-zhipin-job-search \
     "$REPO_ROOT[standalone]"

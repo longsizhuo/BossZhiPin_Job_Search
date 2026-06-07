@@ -197,29 +197,23 @@ async def shutdown_browser() -> dict[str, str]:
 # ---------- Config 面板 ----------
 
 
-class EnvField(_CamelModel):
-    key: str
-    label: str
-    is_secret: bool
-    value: str
-
-
 @commands.command()
-async def get_env_fields() -> dict[str, list[EnvField]]:
-    """返回前端 Config 表单的所有字段 + 当前值。"""
+async def get_env_fields() -> dict[str, list[dict]]:
+    """返回前端 Config 表单的所有字段 + 当前值。
+
+    返回 plain dict 列表，不要塞 pydantic BaseModel 实例——pytauri 的 IPC
+    response 走 JSON 序列化，遇到未 ``model_dump`` 的 BaseModel 会卡住
+    （promise 不 resolve 也不 reject），前端 Config 页一直显示"加载中…"。
+    """
     from boss_zhipin.gui.env_io import field_meta, read_env
 
     current = read_env()
-    fields = [
-        EnvField(
-            key=meta["key"],  # type: ignore[arg-type]
-            label=meta["label"],  # type: ignore[arg-type]
-            is_secret=bool(meta["isSecret"]),
-            value=current.get(meta["key"], ""),  # type: ignore[arg-type]
-        )
-        for meta in field_meta()
-    ]
-    return {"fields": fields}
+    return {
+        "fields": [
+            {**meta, "value": current.get(str(meta["key"]), "")}
+            for meta in field_meta()
+        ]
+    }
 
 
 class WriteEnvBody(_CamelModel):
