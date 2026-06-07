@@ -72,3 +72,7 @@
 /src-tauri/gen/schemas/
 /src-tauri/pyembed/
 
+# tauri icon 顺手生成的 iOS / Android icon set，macOS 桌面项目用不到
+/src-tauri/icons/android/
+/src-tauri/icons/ios/
+
