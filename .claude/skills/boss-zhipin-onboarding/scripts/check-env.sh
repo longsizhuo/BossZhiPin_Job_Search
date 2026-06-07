@@ -12,6 +12,33 @@
 
 set +e  # 故意不退出失败 —— 我们就是要把所有问题都列出来
 
+# ---------- 先探测 Path A（GUI .app 装没装）----------
+# 装了 .app 的用户大概率应该走 GUI 路径，不该被引去装 uv 跑 main.py。
+# Agent 看到这一行有 ✓ 就要确认一下用户是想用 GUI 还是想跑 CLI/dev。
+echo "=== Path A：桌面 App 探测 ==="
+APP_PATHS=(
+    "/Applications/BOSS Zhipin Helper.app"
+    "$HOME/Applications/BOSS Zhipin Helper.app"
+)
+APP_FOUND=""
+for p in "${APP_PATHS[@]}"; do
+    if [ -d "$p" ]; then
+        APP_FOUND="$p"
+        break
+    fi
+done
+if [ -n "$APP_FOUND" ]; then
+    echo "  ✓ 检测到已装 GUI App: $APP_FOUND"
+    echo "    → 如果用户只是想用，建议**走 Path A**（GUI 内填配置即可），不用继续往下走 dev path"
+    echo "    → 用户数据目录：~/Library/Application Support/com.longsizhuo.boss-zhipin/"
+else
+    echo "  ℹ 未检测到 GUI App。如果用户是非开发者，引导他去 latest release 下安装包："
+    echo "    https://github.com/longsizhuo/BossZhiPin_Job_Search/releases/latest"
+fi
+
+echo ""
+echo "=== Path B：开发者模式（clone + uv + CLI）==="
+echo ""
 echo "=== 里程碑 1：uv + git + 项目 clone ==="
 if command -v uv >/dev/null 2>&1; then
     echo "  ✓ uv 已安装: $(uv --version)"
@@ -127,6 +154,13 @@ fi
 
 echo ""
 echo "=== 推荐下一步 ==="
+if [ -n "$APP_FOUND" ]; then
+    echo "  ℹ 用户已经装了 GUI App。先问他："
+    echo "    \"你是想用 App 双击运行（推荐），还是想在终端跑代码（开发模式）？\""
+    echo "    如果是前者 → 完全不用继续 dev path，让他直接打开 App 在配置 tab 填 API key"
+    echo "    如果是后者 → 按下面 dev path 走"
+    echo ""
+fi
 if [ ! -d ".venv" ]; then
     echo "  → 跑 uv sync"
 elif [ ! -f ".env" ]; then
