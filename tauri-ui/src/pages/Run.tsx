@@ -3,6 +3,11 @@ import { Channel } from "@tauri-apps/api/core";
 import { ipc, type ProgressEvent, type RunConfig } from "../lib/ipc";
 import { useRunStore } from "../store";
 
+// 运行页：editorial 三段式布局
+// 1) 顶部 H2 + 状态副标题
+// 2) 表单（底部边框输入，无圆角）
+// 3) 控制按钮行（黑底白字反色）
+// 4) 双面板：进度事件 + 日志（日志保留黑底白字，刚好契合 monochrome）
 export default function RunPage() {
   const [providers, setProviders] = useState<string[]>([]);
   const [providersError, setProvidersError] = useState<string | null>(null);
@@ -33,7 +38,7 @@ export default function RunPage() {
       .catch((e) => setProvidersError(String(e)));
   }, []);
 
-  // 自动滚动
+  // 自动滚动到底
   useEffect(() => {
     if (logScrollRef.current) {
       logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight;
@@ -101,189 +106,269 @@ export default function RunPage() {
     }
   }
 
+  // 状态副标题：替代原本的右侧 idle/running 小字
+  const statusLine = running
+    ? currentIndex !== null
+      ? `Running · 当前 job #${currentIndex}`
+      : "Running · 启动中"
+    : "Idle";
+
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="你的名字（招呼语署名）">
+    <div className="space-y-10">
+      {/* === 段落 1：标题 + 状态 === */}
+      <section className="flex items-end justify-between gap-6 pb-4 border-b-2 border-[var(--ink)]">
+        <div>
+          <h2 className="font-serif text-5xl leading-none tracking-tight">
+            运行 <span className="italic font-normal">/ Run</span>
+          </h2>
+          <p className="mono-tag mt-3">填表 → 开始 → 看着它打招呼</p>
+        </div>
+        <div className="text-right">
+          <span className="mono-tag block">Status</span>
+          <span
+            className={[
+              "font-mono text-sm uppercase tracking-widest mt-1 inline-block px-2 py-1",
+              running
+                ? "bg-[var(--ink)] text-[var(--paper)]"
+                : "text-[var(--muted-fg)]",
+            ].join(" ")}
+          >
+            {statusLine}
+          </span>
+        </div>
+      </section>
+
+      {/* === 段落 2：参数表单 === */}
+      <section>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+          <Field label="你的名字（招呼语署名）" hint="Required">
             <input
               type="text"
               value={usrName}
               onChange={(e) => setUsrName(e.target.value)}
               disabled={running}
-              className="input"
-              placeholder="必填"
+              className="field-input"
+              placeholder="必填，会出现在招呼语末尾"
             />
           </Field>
-          <Field label="求职 tag">
+
+          <Field label="求职 tag" hint="Optional">
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               disabled={running}
-              className="input"
+              className="field-input"
               placeholder="留空走 BOSS 推荐 feed"
             />
           </Field>
-          <Field label="Provider">
+
+          <Field label="LLM Provider">
             {providersError ? (
-              <span className="text-red-600 text-sm">检测失败: {providersError}</span>
+              <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
+                <span className="badge-outline mr-2">ERROR</span>
+                检测失败：{providersError}
+              </div>
             ) : providers.length === 0 ? (
-              <span className="text-amber-600 text-sm">
-                没检测到 API key —— 去配置 tab 填一个
-              </span>
+              <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
+                <span className="badge-invert mr-2">No Key</span>
+                去「配置」tab 填一个 API key
+              </div>
             ) : (
               <select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value)}
                 disabled={running}
-                className="input"
+                className="field-input"
               >
                 {providers.map((p) => (
-                  <option key={p} value={p}>{p}</option>
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
                 ))}
               </select>
             )}
           </Field>
-          <Field label="">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={dryRun}
-                onChange={(e) => setDryRun(e.target.checked)}
-                disabled={running}
-              />
-              DRY-RUN（只生成不发送）
+
+          <Field label="Dry Run">
+            <label className="inline-flex items-center gap-3 text-sm cursor-pointer py-2">
+              {/* 自定义 checkbox：黑边方块，选中后填充黑色 */}
+              <span
+                className={[
+                  "inline-flex items-center justify-center w-5 h-5 border-2 border-[var(--ink)] transition-colors duration-100",
+                  dryRun
+                    ? "bg-[var(--ink)] text-[var(--paper)]"
+                    : "bg-[var(--paper)] text-transparent",
+                ].join(" ")}
+              >
+                <input
+                  type="checkbox"
+                  checked={dryRun}
+                  onChange={(e) => setDryRun(e.target.checked)}
+                  disabled={running}
+                  className="sr-only"
+                />
+                {/* 用 × 符号表示勾选，比 ✓ 更契合 editorial 风 */}
+                <span className="text-xs font-bold leading-none">×</span>
+              </span>
+              <span className="font-mono uppercase tracking-widest text-xs">
+                只生成不发送（推荐先 dry run 一次）
+              </span>
             </label>
           </Field>
         </div>
+      </section>
 
-        <div className="flex items-center gap-3 mt-4">
-          <button
-            onClick={handleStart}
-            disabled={running || busy}
-            className="btn-primary"
-          >
-            开始
-          </button>
-          <button
-            onClick={handleStop}
-            disabled={!running || busy}
-            className="btn-danger"
-          >
-            停止
-          </button>
-          <button
-            onClick={handleReset}
-            disabled={running || busy}
-            className="btn-secondary"
-          >
-            重置 Chrome
-          </button>
-          <span className="ml-auto text-sm text-slate-600">
-            {running
-              ? currentIndex !== null
-                ? `运行中 · 当前 job #${currentIndex}`
-                : "运行中..."
-              : "idle"}
-          </span>
-        </div>
-      </div>
+      {/* === 段落 3：动作按钮 === */}
+      <section className="flex items-center gap-4 flex-wrap pt-6 border-t border-[var(--border-light)]">
+        <button
+          onClick={handleStart}
+          disabled={running || busy}
+          className="btn"
+        >
+          开始 <span className="ml-1">→</span>
+        </button>
+        <button
+          onClick={handleStop}
+          disabled={!running || busy}
+          className="btn-outline"
+        >
+          ▌ 停止
+        </button>
+        <button
+          onClick={handleReset}
+          disabled={running || busy}
+          className="btn-ghost"
+        >
+          重置 Chrome
+        </button>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Panel title="进度事件">
+      {/* === 段落 4：双面板 === */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-0 border-2 border-[var(--ink)]">
+        <Panel title="Progress · 进度事件" rightDivider>
           <div
             ref={eventsScrollRef}
-            className="bg-slate-50 rounded p-3 text-xs font-mono h-72 overflow-y-auto"
+            className="text-xs font-mono h-80 overflow-y-auto"
           >
             {events.length === 0 ? (
-              <div className="text-slate-400">还没事件</div>
+              <div className="text-[var(--muted-fg)] italic">
+                还没事件 ——
+              </div>
             ) : (
               events.map((ev, i) => <EventRow key={i} ev={ev} />)
             )}
           </div>
         </Panel>
 
-        <Panel title="日志">
+        <Panel title="Log · 日志">
+          {/* 日志区：黑底白字反色块，强化 monochrome 对比 */}
           <pre
             ref={logScrollRef}
-            className="bg-slate-900 text-slate-100 rounded p-3 text-xs font-mono h-72 overflow-y-auto whitespace-pre-wrap"
+            className="bg-[var(--ink)] text-[var(--paper)] p-4 text-xs font-mono h-80 overflow-y-auto whitespace-pre-wrap leading-relaxed"
           >
-            {logs.length === 0 ? <span className="text-slate-500">还没日志</span> : logs.join("\n")}
+            {logs.length === 0 ? (
+              <span className="opacity-50 italic">还没日志</span>
+            ) : (
+              logs.join("\n")
+            )}
           </pre>
         </Panel>
-      </div>
-
-      <style>{`
-        .input {
-          padding: 0.4rem 0.6rem; font-size: 14px;
-          border: 1px solid #cbd5e1; border-radius: 0.375rem;
-          background: white; outline: none; transition: border-color 0.15s;
-          width: 100%;
-        }
-        .input:focus { border-color: #64748b; }
-        .input:disabled { background: #f1f5f9; color: #64748b; }
-        .btn-primary {
-          padding: 0.5rem 1.25rem; font-size: 14px; font-weight: 500;
-          background: #16a34a; color: white; border-radius: 0.375rem;
-          transition: background 0.15s;
-        }
-        .btn-primary:hover:not(:disabled) { background: #15803d; }
-        .btn-danger {
-          padding: 0.5rem 1.25rem; font-size: 14px; font-weight: 500;
-          background: #dc2626; color: white; border-radius: 0.375rem;
-        }
-        .btn-danger:hover:not(:disabled) { background: #b91c1c; }
-        .btn-secondary {
-          padding: 0.5rem 1.25rem; font-size: 14px; font-weight: 500;
-          background: white; color: #475569; border: 1px solid #cbd5e1;
-          border-radius: 0.375rem;
-        }
-        .btn-secondary:hover:not(:disabled) { background: #f1f5f9; }
-        .btn-primary:disabled, .btn-danger:disabled, .btn-secondary:disabled {
-          opacity: 0.5; cursor: not-allowed;
-        }
-      `}</style>
+      </section>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      {label && <label className="block text-sm text-slate-600 mb-1">{label}</label>}
+      <div className="flex items-baseline justify-between">
+        {label && <label className="field-label">{label}</label>}
+        {hint && (
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-fg)] italic">
+            {hint}
+          </span>
+        )}
+      </div>
       {children}
     </div>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  children,
+  rightDivider,
+}: {
+  title: string;
+  children: React.ReactNode;
+  rightDivider?: boolean;
+}) {
+  // panel 之间用一条黑色竖线分隔（仅 desktop）
   return (
-    <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200">
-      <h3 className="font-medium text-sm text-slate-700 mb-2">{title}</h3>
+    <div
+      className={[
+        "p-6",
+        rightDivider ? "lg:border-r-2 lg:border-[var(--ink)]" : "",
+        "border-b-2 lg:border-b-0 border-[var(--ink)] last:border-b-0",
+      ].join(" ")}
+    >
+      <h3 className="mono-tag mb-4 text-[var(--ink)]">{title}</h3>
       {children}
     </div>
   );
 }
 
-const KIND_STYLES: Record<string, string> = {
-  browser_started: "text-slate-500",
-  login_ok: "text-emerald-700",
-  job_found: "text-blue-700",
-  job_skipped: "text-slate-500",
-  letter_sent: "text-emerald-700 font-medium",
-  feed_exhausted: "text-purple-700 font-medium",
-  loop_ended: "text-purple-700 font-medium",
-  error: "text-red-700 font-medium",
+// 事件类型 → 视觉表达
+// monochrome 风：去掉所有颜色语义，改用字重 + 反色 + 前缀符号
+// - 重要正向（letter_sent / feed_exhausted / loop_ended）：反色徽章
+// - 错误（error）：粗黑边 + 前缀 ▌
+// - 跳过类（job_skipped）：虚弱化文本
+// - 其他：默认
+type EventStyle = {
+  variant: "default" | "invert" | "error" | "weak";
+  prefix?: string;
+};
+
+const KIND_STYLES: Record<string, EventStyle> = {
+  browser_started: { variant: "weak", prefix: "·" },
+  login_ok: { variant: "default", prefix: "✓" },
+  job_found: { variant: "default", prefix: "→" },
+  job_skipped: { variant: "weak", prefix: "—" },
+  letter_sent: { variant: "invert", prefix: "■" },
+  feed_exhausted: { variant: "invert", prefix: "■" },
+  loop_ended: { variant: "invert", prefix: "■" },
+  error: { variant: "error", prefix: "▌" },
 };
 
 function EventRow({ ev }: { ev: ProgressEvent }) {
+  const style = KIND_STYLES[ev.kind] ?? { variant: "default" };
   const payload = Object.entries(ev.payload)
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
     .join(" ");
+
+  const classes = {
+    default: "py-1 text-[var(--ink)]",
+    invert:
+      "py-1 px-2 -mx-2 my-0.5 bg-[var(--ink)] text-[var(--paper)] font-medium",
+    error:
+      "py-1 px-2 -mx-2 my-0.5 border-l-4 border-[var(--ink)] font-medium",
+    weak: "py-1 text-[var(--muted-fg)]",
+  }[style.variant];
+
   return (
-    <div className={`py-0.5 ${KIND_STYLES[ev.kind] ?? "text-slate-700"}`}>
-      <span className="opacity-70">[{ev.kind}]</span> {payload}
+    <div className={classes}>
+      {style.prefix && <span className="mr-2">{style.prefix}</span>}
+      <span className="uppercase tracking-widest text-[10px]">[{ev.kind}]</span>{" "}
+      <span className="opacity-80">{payload}</span>
     </div>
   );
 }

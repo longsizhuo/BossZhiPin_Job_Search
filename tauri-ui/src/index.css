@@ -2,8 +2,173 @@
 @tailwind components;
 @tailwind utilities;
 
+/* === Minimalist Monochrome 设计 token === */
+/* 全站只允许纯黑、纯白、两级灰；零圆角、零阴影、衬线为主、等宽辅助 */
+:root {
+  --ink: #000000; /* 主前景 / 边框 / accent */
+  --paper: #ffffff; /* 主背景 */
+  --muted: #f5f5f5; /* 轻底块 */
+  --muted-fg: #525252; /* 次级文字 */
+  --border-light: #e5e5e5; /* 弱分割线 */
+}
+
 @layer base {
+  html,
   body {
-    @apply font-sans antialiased text-slate-800;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  body {
+    /* 衬线作为正文：editorial 质感 */
+    @apply font-serif antialiased;
+    font-feature-settings: "kern", "liga", "calt";
+    /* 极淡的水平线噪点纹理，避免完全平 */
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 1px,
+      rgba(0, 0, 0, 0.02) 1px,
+      rgba(0, 0, 0, 0.02) 2px
+    );
+    background-size: 100% 4px;
+  }
+
+  /* 标题统一压紧字距 */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-serif tracking-tight;
+    letter-spacing: -0.02em;
+  }
+
+  /* 等宽元素：日志、数据、key 标签 */
+  pre,
+  code,
+  kbd,
+  samp {
+    @apply font-mono;
+  }
+
+  /* 全局聚焦：仅 keyboard 时显示，3px 黑色实线 */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  /* 选区也保持单色 */
+  ::selection {
+    background: var(--ink);
+    color: var(--paper);
+  }
+}
+
+@layer components {
+  /* === 按钮 === */
+  /* 主按钮：黑底白字 → hover 反色到白底黑字 */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 text-xs font-mono uppercase tracking-widest border-2 border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)] transition-colors duration-100;
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .btn:disabled {
+    @apply opacity-30 cursor-not-allowed;
+  }
+
+  /* 副按钮：透明底黑边 → hover 填充 */
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 text-xs font-mono uppercase tracking-widest border-2 border-[var(--ink)] bg-transparent text-[var(--ink)] transition-colors duration-100;
+  }
+  .btn-outline:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .btn-outline:disabled {
+    @apply opacity-30 cursor-not-allowed;
+  }
+
+  /* 幽灵按钮：仅文字 + hover 下划线 */
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-2 py-1 text-xs font-mono uppercase tracking-widest text-[var(--ink)] border-b-2 border-transparent transition-colors duration-100;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    border-bottom-color: var(--ink);
+  }
+  .btn-ghost:disabled {
+    @apply opacity-30 cursor-not-allowed;
+  }
+
+  /* === 输入框 === */
+  /* 仅底部边框 → focus 加粗 */
+  .field-input {
+    @apply w-full bg-transparent text-[var(--ink)] px-0 py-2 text-base border-0 border-b-2 border-[var(--ink)] outline-none transition-all duration-100;
+  }
+  .field-input::placeholder {
+    @apply text-[var(--muted-fg)] italic;
+  }
+  .field-input:focus,
+  .field-input:focus-visible {
+    border-bottom-width: 4px;
+    outline: none;
+  }
+  .field-input:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* select 在 native 表现下需要复位一些样式 */
+  select.field-input {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+      linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+    background-position: calc(100% - 12px) 50%, calc(100% - 6px) 50%;
+    background-size: 6px 6px;
+    background-repeat: no-repeat;
+    padding-right: 1.5rem;
+  }
+
+  /* 字段标签：mono uppercase 小字 */
+  .field-label {
+    @apply block text-[11px] font-mono uppercase tracking-widest text-[var(--muted-fg)] mb-1.5;
+  }
+
+  /* === 容器 === */
+  /* 标准 panel：黑细边 + 白底 + 无圆角无阴影 */
+  .panel {
+    @apply bg-[var(--paper)] border border-[var(--ink)] p-6;
+  }
+
+  /* 反色 panel：用于强调（黑底白字） */
+  .panel-invert {
+    @apply bg-[var(--ink)] text-[var(--paper)] p-6;
+  }
+
+  /* 段落分割线 */
+  .rule-thick {
+    @apply border-0 border-t-4 border-[var(--ink)];
+  }
+  .rule-thin {
+    @apply border-0 border-t border-[var(--ink)];
+  }
+  .rule-hair {
+    @apply border-0 border-t border-[var(--border-light)];
+  }
+
+  /* 小型 mono 标签（key / metadata） */
+  .mono-tag {
+    @apply font-mono text-[11px] uppercase tracking-widest text-[var(--muted-fg)];
+  }
+
+  /* 反色徽章（用于"成功 / 发送"这类强调） */
+  .badge-invert {
+    @apply inline-flex items-center px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest bg-[var(--ink)] text-[var(--paper)];
+  }
+  .badge-outline {
+    @apply inline-flex items-center px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest border border-[var(--ink)] text-[var(--ink)];
   }
 }
