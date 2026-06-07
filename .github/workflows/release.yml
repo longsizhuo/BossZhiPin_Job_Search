@@ -80,6 +80,14 @@ jobs:
         with:
           node-version: "24"
 
+      # tag 是版本号的 single source of truth：把 v0.4.0 → 0.4.0 注入到
+      # pyproject / Cargo.toml / tauri.conf.json / wheel Tauri.toml，build 出来
+      # 的产物版本号跟 release tag 永远一致（仓库里 committed 的版本号只是
+      # 本地 dev build 的占位默认值）。uv run 在 mac/windows 上行为一致，
+      # 不用为两个 shell 写两份。
+      - name: Set version from tag
+        run: uv run --no-project python scripts/set_version.py "${{ github.ref_name }}"
+
       # 跑你本地一直在用的 build 脚本，不重新发明轮子
       - name: Run build script
         run: ${{ matrix.script }}
