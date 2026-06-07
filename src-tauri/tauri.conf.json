@@ -37,7 +37,16 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "./entitlements.plist"
+    },
+    "windows": {
+      "wix": {
+        "language": ["zh-CN"]
+      },
+      "nsis": {
+        "languages": ["SimpChinese"]
+      }
     }
   }
 }

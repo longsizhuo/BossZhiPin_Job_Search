@@ -1,0 +1,135 @@
+# 自动 release：push 一个 `v*` tag（如 v0.4.0、v0.4.0-rc1），自动跑
+# macOS + Windows runner 各自打包 → 上传到 draft GitHub Release。
+#
+# 设计要点：
+#
+# - 走 **draft**：所有 asset 传齐之后停下，让人审 release notes 再点 Publish。
+#   不要在 CI 里直接 publish——避免错版本的产物公开。
+#
+# - 复用本地已经调通的 ``scripts/build_standalone.{sh,ps1}``：CI runner 上
+#   ``bash`` / ``pwsh`` 跟本地行为一致，build 脚本不动可以零成本搬到 CI。
+#
+# - matrix 不 fail-fast：mac 挂了不取消 Windows，反之亦然——一边过了
+#   至少有一个平台的产物可以传。
+#
+# - 第一版**不加缓存**：先把流程跑通。cargo / pip / pnpm 加 cache 能把
+#   ~15 min 降到 ~5 min，但 cache key 调对要花时间，留到 v2。
+#
+# - **macOS runner 是 arm64**（GitHub 2024-10 切的），跟当前 v0.3.x 的
+#   aarch64-only 产物对齐。要支持 Intel Mac 需要再加 `macos-13` runner，
+#   暂时不做。
+#
+# 调试流程：
+#   git tag v0.4.0-rc1 && git push origin v0.4.0-rc1
+#   → Actions 跑完后 GitHub 出现 v0.4.0-rc1 的 draft release
+#   → 验证 3 个 asset 都在、能下、能装
+#   → 删 rc tag、删 draft release，正式打 v0.4.0
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  # softprops/action-gh-release 建 release + 传 asset 必需
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS (arm64)
+            script: bash scripts/build_standalone.sh
+            artifact_name: macos-arm64
+            artifact_path: |
+              src-tauri/target/bundle-release/bundle/dmg/*.dmg
+          - os: windows-latest
+            label: Windows (x64)
+            script: pwsh -ExecutionPolicy Bypass -File scripts/build_standalone.ps1
+            artifact_name: windows-x64
+            artifact_path: |
+              src-tauri/target/bundle-release/bundle/nsis/*.exe
+              src-tauri/target/bundle-release/bundle/msi/*.msi
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv：装嵌入式 Python + 业务 deps
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      # Rust：编译 src-tauri/ 的 Rust binary
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # pnpm + node：build_standalone 内部会调 pnpm install + tauri build
+      # node-version 跟本地 24.x 对齐
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # tag 是版本号的 single source of truth：把 v0.4.0 → 0.4.0 注入到
+      # pyproject / Cargo.toml / tauri.conf.json / wheel Tauri.toml，build 出来
+      # 的产物版本号跟 release tag 永远一致（仓库里 committed 的版本号只是
+      # 本地 dev build 的占位默认值）。uv run 在 mac/windows 上行为一致，
+      # 不用为两个 shell 写两份。
+      - name: Set version from tag
+        run: uv run --no-project python scripts/set_version.py "${{ github.ref_name }}"
+
+      # 跑你本地一直在用的 build 脚本，不重新发明轮子
+      - name: Run build script
+        run: ${{ matrix.script }}
+
+      # 把这一端的产物（mac: dmg；windows: exe + msi）打成 artifact 给 release job 用
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish draft release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 把 mac + windows job 上传的 artifact 全部拉下来
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      # 调试用：把待上传的文件列出来，CI log 里能看清楚
+      - name: List artifacts
+        run: |
+          echo "=== artifacts to publish ==="
+          find dist -type f | sort
+
+      # 建 draft release：generate_release_notes=true 让 GitHub 从 commit
+      # message 自动拼初稿，user 在 GitHub UI 里 review + 改完再点 Publish
+      - name: Create draft release with artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/macos-arm64/*
+            dist/windows-x64/*
