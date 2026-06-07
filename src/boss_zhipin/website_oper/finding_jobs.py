@@ -50,10 +50,45 @@ def _on_login_page(url: str) -> bool:
 
 
 async def _is_logged_in() -> bool:
-    """登录态以 URL 为准：BOSS 未登录时一定 redirect 到 /web/user/ 类路径。"""
+    """判定登录态：URL + DOM 双 check。
+
+    早期 BOSS 对未登录用户一定 redirect 到 ``/web/user/`` 类路径，只看 URL 够用。
+    现在它经常**不 redirect**，而是直接在 ``/web/geek/...`` 原地盖一个登录浮层。
+    只看 URL 会把这种情况误判成已登录，后续 ``get_job_description`` 抓到的是
+    浮层背后的 ``<style>`` 噪音（关键词命中 0/2 → feed_exhausted 假阴性）。
+
+    所以加一层 DOM 探测：页面里有可见的登录浮层就强制判未登录。选不到浮层时
+    退回原 URL 判定，避免 BOSS 改 class 名后把真实已登录态误杀。
+    """
     if _tab is None:
         return False
-    return not _on_login_page(_tab.url)
+    # URL 命中已知登录页路径 → 直接未登录，连 DOM 都不用问
+    if _on_login_page(_tab.url):
+        return False
+
+    # BOSS 的登录浮层 class 名换过几版：boss-login-dialog / login-dialog-wrap /
+    # loginDialog 等，统一用 attribute selector 兜
+    js = """
+    JSON.stringify((() => {
+      const visible = (el) => {
+        if (!el) return false;
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const wall = document.querySelector(
+        '[class*="login-dialog"], [class*="boss-login"], '
+        + '[class*="loginDialog"], [class*="login-wrap"]'
+      );
+      return { loginWallVisible: visible(wall) };
+    })());
+    """
+    info = await _safe_evaluate(js, timeout=5)
+    if info.get("loginWallVisible"):
+        log.info("URL 看起来已登录但页面上有登录浮层 → 判未登录，走扫码")
+        return False
+    return True
 
 
 async def _wait_url_stable(stable_for: float = 2.0, timeout: float = 30) -> str:
