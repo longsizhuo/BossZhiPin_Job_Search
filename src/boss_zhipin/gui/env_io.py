@@ -1,14 +1,22 @@
 """GUI 配置面板用——读/写 ``.env`` 表单字段。
 
-只动 ``.env``，**不动 ``os.environ``**——避免 GUI 修改的字段污染同进程里
-其他模块的读 env 操作（特别是 LLM client 在 import 时读 API key）。GUI
-保存后用户需要重启 app 或重新 start_run 让新值生效。
+写 ``.env`` 的同时**也同步进程内的 ``os.environ``**——否则 GUI 里存完
+API key，``detect_providers`` / LLM ``_build_client`` 仍读的是进程启动时
+load_dotenv 进来的旧值（None），表现为"配置页存了 key，运行页还是 NO KEY、
+点开始没反应 / 跑起来报 DEEPSEEK_API_KEY is not set"，必须重启 App 才生效
+（2026-06-08 用户实测）。这些读 env 的地方全是 call-time ``os.getenv``，
+所以保存时一并更新 ``os.environ`` 就能即时生效，无需重启。
+
+唯一仍需重启才更新的是 ``models.openai_assistant`` 里 import-time 读进的
+``OPENAI_API_KEY`` 模块常量——但 ``cli.run_provider`` 的 chatgpt 分支已经
+改成 call-time 重读 env，所以实际也不受影响。
 
 API key 字段在前端 mask（password input），后端不主动 mask——前端拿到
 真实值后用户改的时候不至于看到 ``***``。
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from dotenv import dotenv_values, set_key, unset_key
@@ -55,8 +63,11 @@ def read_env() -> dict[str, str]:
 def write_env(updates: dict[str, str]) -> None:
     """把表单提交的 key/value 写回 .env。
 
-    - 空字符串 → ``unset_key`` 把那一行删掉（区别于"留空但保留 key"）
+    - 空字符串 → ``unset_key`` 把那一行删掉（区别于"留空但保留 key"），
+      同时从 ``os.environ`` 里 pop 掉
     - 不存在的 key 自动 append
+    - 非空值写文件 + 同步 ``os.environ``，让同进程的 call-time ``os.getenv``
+      立即读到新值（无需重启 App，见 module docstring）
     - 跟 read_env 一样**只允许 KNOWN_KEYS 里的字段**，防注入
     """
     path = _env_path()
@@ -69,8 +80,10 @@ def write_env(updates: dict[str, str]) -> None:
                 unset_key(str(path), k)
             except Exception:
                 pass
+            os.environ.pop(k, None)
         else:
             set_key(str(path), k, v, quote_mode="never")
+            os.environ[k] = v
 
 
 def field_meta() -> list[dict[str, str | bool]]:

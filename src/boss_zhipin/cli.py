@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from boss_zhipin.models.job_matcher import extract_keywords_from_text, extract_resume_text
-from boss_zhipin.models.openai_assistant import OPENAI_API_KEY, create_assistant
+from boss_zhipin.models.openai_assistant import create_assistant
 # PROVIDER_ENV_KEYS / PROVIDER_SIGNUP / detect_providers 抽到 boss_zhipin.providers
 # 让 PyTauri 的 detect_providers 命令不被 cli.py 的重 import 链拖累
 # （cli 的 vectorization import 会触发 sentence_transformers → torch，3-10s）。
@@ -153,8 +153,11 @@ async def run_provider(
         openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
         if openai_base_url:
             log.info("OpenAI base_url 覆盖：%s", openai_base_url)
+        # call-time 重读，别用 openai_assistant 的 import-time 常量 OPENAI_API_KEY：
+        # GUI 配置页存完 key 后那个常量还是启动时的旧值（None），会导致刚配的
+        # key 不生效。其它 provider 走 llm._build_client 同样是 call-time os.getenv。
         client_openai = OpenAI(
-            api_key=OPENAI_API_KEY,
+            api_key=os.getenv("OPENAI_API_KEY"),
             base_url=openai_base_url or None,
         )
         assistant_id = create_assistant(

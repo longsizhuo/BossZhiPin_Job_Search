@@ -139,8 +139,8 @@ export default function ConfigPage() {
       {/* === 说明 === */}
       <section className="border-t-4 border-[var(--ink)] pt-6">
         <p className="text-sm font-serif italic text-[var(--muted-fg)] leading-relaxed max-w-2xl">
-          保存后 .env 立即更新；但 LLM client 在程序启动时已经读过 API key，
-          要让新值生效请退出 App 重新打开。
+          保存后即时生效——切回「运行」tab 就能在 provider 下拉里看到新配的 key，
+          无需重启 App。
         </p>
       </section>
     </div>
