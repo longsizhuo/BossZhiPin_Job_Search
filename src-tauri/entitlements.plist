@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  嵌入式 Python 必需的 hardened-runtime 例外（PyInstaller 同款三件套）。
+
+  背景：tauri bundler 用 signingIdentity="-" ad-hoc 签名时默认开 hardened
+  runtime（- -options runtime），hardened runtime 会启用 library validation：
+  只允许加载 Apple 签名或同 Team ID 的 dylib。而 pyembed 里的
+  libpython3.13.dylib / site-packages 的全部 .so 都只有 linker-signed
+  ad-hoc 签名（无 Team ID），macOS 26 上 dyld 直接拒载，.app 启动即
+  SIGABRT（"Library not loaded: @rpath/libpython3.13.dylib ...
+  different Team IDs"，2026-06-08 实测）。
+
+  这三个 entitlement 是"runtime exception"类，ad-hoc 签名也生效，
+  不需要 provisioning profile。
+-->
+<plist version="1.0">
+<dict>
+    <!-- 关 library validation：放行 linker-signed 的 libpython + .so -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- ctypes/cffi 等会映射可写可执行内存 -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- 允许 dyld 环境变量（嵌入式 Python 启动需要） -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>

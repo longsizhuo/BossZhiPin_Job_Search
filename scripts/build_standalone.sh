@@ -135,4 +135,19 @@ if ! codesign --verify "$APP" 2>/dev/null; then
     exit 1
 fi
 
+# ---------- 8. entitlements 自检 ----------
+# hardened runtime（tauri ad-hoc 签名默认开）会启用 library validation，
+# 而 pyembed 的 libpython / .so 都是 linker-signed 无 Team ID，没有
+# disable-library-validation entitlement 的话 .app 启动即 dyld crash
+# （"Library not loaded: @rpath/libpython3.13.dylib"，2026-06-08 macOS 26.2
+# 实测）。entitlements 由 tauri.conf.json bundle.macOS.entitlements 指向
+# src-tauri/entitlements.plist 注入。
+echo "==> entitlements 自检（必须含 disable-library-validation）"
+if ! codesign -d --entitlements - "$APP" 2>/dev/null | grep -q "disable-library-validation"; then
+    echo "❌ 签名里没有 com.apple.security.cs.disable-library-validation —— "
+    echo "   检查 tauri.conf.json 的 bundle.macOS.entitlements 是否指向 entitlements.plist"
+    exit 1
+fi
+echo "  ✓ disable-library-validation 已注入"
+
 echo "✅ 构建完成：$APP"
