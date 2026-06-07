@@ -19,10 +19,10 @@ SRC_TAURI_DIR = REPO_ROOT / "src-tauri"
 
 def test_capabilities_in_sync():
     toml_cap = tomllib.loads(
-        (WHEEL_TAURI_DIR / "capabilities" / "default.toml").read_text()
+        (WHEEL_TAURI_DIR / "capabilities" / "default.toml").read_text(encoding="utf-8")
     )
     json_cap = json.loads(
-        (SRC_TAURI_DIR / "capabilities" / "default.json").read_text()
+        (SRC_TAURI_DIR / "capabilities" / "default.json").read_text(encoding="utf-8")
     )
     assert toml_cap["identifier"] == json_cap["identifier"]
     assert toml_cap["windows"] == json_cap["windows"]
@@ -32,10 +32,10 @@ def test_capabilities_in_sync():
 
 
 def test_versions_in_sync():
-    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
-    wheel_tauri = tomllib.loads((WHEEL_TAURI_DIR / "Tauri.toml").read_text())
-    tauri_conf = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text())
-    cargo = tomllib.loads((SRC_TAURI_DIR / "Cargo.toml").read_text())
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    wheel_tauri = tomllib.loads((WHEEL_TAURI_DIR / "Tauri.toml").read_text(encoding="utf-8"))
+    tauri_conf = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text(encoding="utf-8"))
+    cargo = tomllib.loads((SRC_TAURI_DIR / "Cargo.toml").read_text(encoding="utf-8"))
 
     version = pyproject["project"]["version"]
     assert wheel_tauri["version"] == version, "Tauri.toml 版本号没跟 pyproject 同步"
@@ -44,8 +44,8 @@ def test_versions_in_sync():
 
 
 def test_identifiers_in_sync():
-    tauri_conf = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text())
-    wheel_tauri = tomllib.loads((WHEEL_TAURI_DIR / "Tauri.toml").read_text())
+    tauri_conf = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text(encoding="utf-8"))
+    wheel_tauri = tomllib.loads((WHEEL_TAURI_DIR / "Tauri.toml").read_text(encoding="utf-8"))
     from boss_zhipin.paths import APP_IDENTIFIER
 
     assert tauri_conf["identifier"] == APP_IDENTIFIER
@@ -53,6 +53,6 @@ def test_identifiers_in_sync():
 
 
 def test_product_name_in_sync():
-    tauri_conf = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text())
-    wheel_tauri = tomllib.loads((WHEEL_TAURI_DIR / "Tauri.toml").read_text())
+    tauri_conf = json.loads((SRC_TAURI_DIR / "tauri.conf.json").read_text(encoding="utf-8"))
+    wheel_tauri = tomllib.loads((WHEEL_TAURI_DIR / "Tauri.toml").read_text(encoding="utf-8"))
     assert tauri_conf["productName"] == wheel_tauri["productName"]

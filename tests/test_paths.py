@@ -5,7 +5,16 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 from boss_zhipin import paths
+
+# Linux 分支用例会 ``monkeypatch.setattr(os, "name", "posix")``——
+# Python 3.13 起在 Windows 上禁止实例化 PosixPath，这两个用例在 Windows
+# 上必失败但行为正确，跳过即可（CI 的 Linux runner 仍会跑）。
+_skip_on_windows = pytest.mark.skipif(
+    os.name == "nt", reason="Linux 分支需要 PosixPath，Win 上 Python 3.13+ 禁止实例化"
+)
 
 
 class TestIsStandalone:
@@ -34,6 +43,7 @@ class TestAppDataDir:
         result = paths.app_data_dir()
         assert result == Path.home() / "Library" / "Application Support" / paths.APP_IDENTIFIER
 
+    @_skip_on_windows
     def test_linux_xdg_default(self, monkeypatch, tmp_path):
         monkeypatch.delenv("BOSS_APP_DATA_DIR", raising=False)
         monkeypatch.setattr(sys, "platform", "linux")
@@ -46,7 +56,7 @@ class TestAppDataDir:
         # 否则 .app 的数据目录跟 Tauri 自己（WebView cache 等）的不在一处
         import json
         conf = json.loads(
-            (Path(__file__).parent.parent / "src-tauri" / "tauri.conf.json").read_text()
+            (Path(__file__).parent.parent / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8")
         )
         assert paths.APP_IDENTIFIER == conf["identifier"]
 
