@@ -22,6 +22,16 @@ import re
 import sys
 from pathlib import Path
 
+# Windows runner 的 Python stdout/stderr 默认 cp1252，编不了脚本里的
+# emoji / 全角箭头（→ ❌ ✅），happy path 的 print 直接 UnicodeEncodeError
+# 崩掉（2026-06-08 CI 实测）。把两个流重配成 UTF-8 一次性兜住所有路径；
+# 老 Python / 非 TextIOWrapper 流静默跳过。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # (相对路径, 匹配 version 行的正则, 这个文件是否必须命中)。

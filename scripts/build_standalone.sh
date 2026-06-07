@@ -41,7 +41,10 @@ if [[ "${BOSS_PYEMBED_REBUILD:-}" == "1" ]]; then
     rm -rf "$PYEMBED_DIR"
 fi
 if [[ ! -x "$PYEMBED_DIR/python/bin/python3" ]]; then
-    echo "==> 下载嵌入式 Python $PYTHON_SERIES（python-build-standalone）"
+    # ${} 花括号必须保留：CI runner 的 locale 是 C/POSIX（非 UTF-8），
+    # bash 不把后面的全角中文 `（` 当作变量名边界，会把它的首字节粘进变量名
+    # → `set -u` 下报 "PYTHON_SERIES…: unbound variable"（2026-06-08 CI 实测）。
+    echo "==> 下载嵌入式 Python ${PYTHON_SERIES}（python-build-standalone）"
     mkdir -p "$PYEMBED_DIR"
     UV_PYTHON_INSTALL_DIR="$PYEMBED_DIR/_download" uv python install "$PYTHON_SERIES"
     # uv 落盘目录名带完整版本号（cpython-3.13.x-macos-aarch64-none），规范成 python/
