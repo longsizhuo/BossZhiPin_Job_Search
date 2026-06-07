@@ -94,6 +94,17 @@ uv pip install --exact --compile-bytecode --break-system-packages `
     "$RepoRoot[standalone]"
 if ($LASTEXITCODE -ne 0) { throw "uv pip install 失败（exit $LASTEXITCODE）" }
 
+# ---------- 3.5 删掉 pyembed 里的 BUILD 标记文件 ----------
+# python-build-standalone 自带一个 8 字节的 BUILD 元数据文件。Windows 文件系统
+# 大小写不敏感，tauri-build 的 copy_resources 把它拷到 target\bundle-release\BUILD
+# 时正好撞上 cargo 自己的 build\ 目录，fs::copy 往目录上写 → "拒绝访问 (os error 5)"。
+# Python 运行时不读这个文件，删掉无副作用。
+$BuildMarker = Join-Path $PyembedDir 'python\BUILD'
+if (Test-Path -PathType Leaf $BuildMarker) {
+    Write-Host "==> 删除 pyembed BUILD 标记文件（避开 cargo build\ 目录大小写冲突）"
+    Remove-Item -Force $BuildMarker
+}
+
 # ---------- 4. Rust 链接参数 ----------
 # PYO3_PYTHON：不设的话 pyo3 自动探测系统 Python → 链到 PATH 上的 python.exe
 # 或注册表里的 Python → bundle 后启动 LoadLibrary 拿错版本。

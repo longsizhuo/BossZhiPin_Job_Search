@@ -80,6 +80,15 @@
 | Bundle target | `.app` + `.dmg` | NSIS `*-setup.exe` + MSI `*.msi`（看 tauri.conf.json） |
 | 自检 | `otool -L` 看没链 `Python3.framework` | PE IMPORTS 只记 DLL 文件名不记路径，自检退化成"找产物 + 列安装器"；真正的链对/链错要等装一遍 installer，开 Process Explorer 看加载的 `python313.dll` 路径 |
 
+实测踩坑（2026-06-07 首次 Windows 构建）：
+
+- **pyembed 的 `BUILD` 文件 vs cargo 的 `build\` 目录大小写冲突**：
+  python-build-standalone 自带 8 字节 `BUILD` 元数据文件，tauri-build 的
+  `copy_resources` 把资源平铺进 `target\bundle-release\` 时，`BUILD` 在
+  大小写不敏感的 NTFS 上撞上 cargo 自己的 `build\` 目录，`fs::copy` 往
+  目录上写报 `拒绝访问 (os error 5)`。修复：`.ps1` 在 tauri build 前删掉
+  该文件（step 3.5），Python 运行时不读它。
+
 风险点（暂未实测，标 TODO）：
 
 - `tauri.bundle.json` 的 `"pyembed/python": "./"` 在 Windows 的 NSIS/MSI 里
