@@ -79,6 +79,19 @@ PYTAURI_STANDALONE=1 uv pip install \
     --reinstall-package=boss-zhipin-job-search \
     "$REPO_ROOT[standalone]"
 
+# ---------- 3.5 删掉 pyembed 里的 BUILD 标记文件 ----------
+# python-build-standalone 自带一个 8 字节的 BUILD 元数据文件。macOS 默认 APFS
+# **大小写不敏感**，tauri-build 把 pyembed 资源（含这个 BUILD 文件）拷进 target
+# 时，BUILD 跟 cargo 自己的 build/ 目录撞名 → fs::copy 往目录上写文件报
+# "Is a directory (os error 21)"（2026-06-09 CI 实测；.ps1 在 Windows 上同因
+# 报 os error 5，早已删它，.sh 之前漏了这步——老 uv 下的 pyembed 不带 BUILD
+# 文件所以本地没翻车）。Python 运行时不读这个文件，删掉无副作用。
+build_marker="$PYEMBED_DIR/python/BUILD"
+if [[ -f "$build_marker" ]]; then
+    echo "==> 删除 pyembed BUILD 标记文件（避开 cargo build/ 目录大小写冲突）"
+    rm -f "$build_marker"
+fi
+
 # ---------- 4. Rust 链接参数 ----------
 # PYO3_PYTHON：不设的话 pyo3 自动探测系统 Python → 链到 CLT 的
 # Python3.framework → .app 启动 dyld crash。这是整个脚本最关键的两行。
