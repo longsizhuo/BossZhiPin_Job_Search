@@ -61,6 +61,7 @@ jobs:
           uv run python -c "from boss_zhipin.gui.runner import start_run, stop_run, is_running, get_task, reset"
           uv run python -c "from boss_zhipin.gui.log_bridge import CallbackHandler, install, uninstall"
           uv run python -c "from boss_zhipin.gui.env_io import read_env, write_env, field_meta, KNOWN_KEYS"
+          uv run python -c "from boss_zhipin.gui.resume_io import store_resume, current_resume, DEFAULT_RESUME_PATH"
           uv run python -c "from boss_zhipin.gui.history import read_letters"
 
       - name: 跑 pytest

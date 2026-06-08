@@ -149,9 +149,23 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
     报错：
     - already running → ``RuntimeError`` 由 PyTauri 自动序列化成前端 ``catch`` 能拿到的字符串
     - bad provider → ``ValueError``
+    - 找不到简历 → ``ValueError``
     """
     if runner.is_running():
         raise RuntimeError("already running")
+
+    # 简历存在性前置校验：不查的话，缺简历会等 cli import（torch，~10s）跑完才在
+    # run_provider 深处抛 FileNotFoundError，只剩 Progress 面板一行容易错过的
+    # [error]，用户感受是"点开始没反应"。尤其 standalone .app 的 CWD 是应用数据
+    # 目录，repo 里的 resume/ 不在那儿——这是缺省炸点。这里同步抛 ValueError，
+    # pyInvoke 直接 reject，前端 catch 后写进日志面板，秒级可见。current_resume
+    # 只做 is_file 判断，不触发重 import。
+    from boss_zhipin.gui.resume_io import current_resume
+
+    if current_resume() is None:
+        raise ValueError(
+            "找不到简历 PDF —— 在「运行」页把简历 PDF 拖进来（或在 .env 设 RESUME_PATH）"
+        )
 
     progress_channel = body.progress_channel.channel_on(webview_window.as_ref_webview())
     log_channel = body.log_channel.channel_on(webview_window.as_ref_webview())
@@ -233,6 +247,35 @@ async def write_env_fields(body: WriteEnvBody) -> dict[str, str]:
     from boss_zhipin.gui.env_io import write_env
     write_env(body.updates)
     return {"status": "saved"}
+
+
+# ---------- 简历（Run 页拖拽上传） ----------
+
+
+class _SetResumeBody(_CamelModel):
+    path: str  # 前端拖拽事件给的绝对路径
+
+
+@commands.command()
+async def set_resume(body: _SetResumeBody) -> dict[str, str]:
+    """把拖进来的 PDF 复制进 ``resume/`` 并设为当前简历。
+
+    返回 ``{filename, path}``。校验失败（不是 PDF / 文件不存在）抛 ``ValueError``，
+    PyTauri 自动序列化成前端 ``catch`` 能拿到的字符串。
+    """
+    from boss_zhipin.gui.resume_io import store_resume
+    return store_resume(body.path)
+
+
+@commands.command()
+async def get_resume() -> dict[str, Optional[dict]]:
+    """返回当前简历 ``{resume: {filename, path}}``，没设置 / 文件不在则 ``resume`` 为 null。
+
+    运行页一挂载就调，**不能触发重 import**——``resume_io.current_resume``
+    刻意没 import cli/vectorization（torch），保持轻量。
+    """
+    from boss_zhipin.gui.resume_io import current_resume
+    return {"resume": current_resume()}
 
 
 # ---------- History 面板 ----------

@@ -30,7 +30,8 @@ KNOWN_KEYS: list[tuple[str, str, bool]] = [
     ("ANTHROPIC_API_KEY", "Anthropic (Claude) API key", True),
     ("BOSS_USR_NAME", "你的名字（招呼语署名）", False),
     ("BOSS_LABEL", "求职 tag（空走 BOSS 推荐 feed）", False),
-    ("RESUME_PATH", "简历 PDF 路径（默认 ./resume/my_cover.pdf）", False),
+    # RESUME_PATH 不在此处：改由「运行」tab 拖拽上传管理（gui.resume_io），
+    # 避免 Config 页一个裸路径输入框成为第二真相源。env 变量本身仍处处生效。
     ("CHATGPT_MODEL", "OpenAI 模型（默认 gpt-4o）", False),
     ("OPENAI_BASE_URL", "OpenAI 代理 URL（可选）", False),
     ("BOSS_CHROME_PROFILE", "Chrome profile 目录（默认 ./chrome_profile）", False),

@@ -13,6 +13,8 @@ CLI ``boss_zhipin.cli`` 不调本包；CLI 行为不受 ``gui/`` 任何代码影
   ``loop_ended(reason)``。
 - ``log_bridge`` —— ``CallbackHandler`` 把 ``logging.LogRecord`` 喂给 callback。
 - ``env_io`` —— 读/写 ``.env`` 表单字段（GUI Config tab 用）。
+- ``resume_io`` —— 把运行页拖入的简历 PDF 复制进 ``resume/`` 并设 ``RESUME_PATH``
+  （GUI Run tab 用）。
 - ``history`` —— 读 ``logs/letters.jsonl`` 末尾 N 条（GUI History tab 用）。
 
 桌面 App 入口在 ``boss_zhipin/tauri/__init__.py``：``uv sync`` 后

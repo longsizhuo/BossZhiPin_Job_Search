@@ -34,6 +34,12 @@ export type EnvField = {
   value: string;
 };
 
+// 当前简历：文件名 + 绝对路径。没设置 / 文件不在时后端返回 null。
+export type ResumeInfo = {
+  filename: string;
+  path: string;
+};
+
 export type LetterRecord = {
   ts: string;
   provider: string;
@@ -70,6 +76,10 @@ export const ipc = {
   getEnvFields: () => pyInvoke<{ fields: EnvField[] }>("get_env_fields", {}),
   writeEnvFields: (updates: Record<string, string>) =>
     pyInvoke<{ status: string }>("write_env_fields", { updates }),
+  // 简历：set_resume 把拖入的 PDF 复制进 app 数据目录的 resume/；get_resume 读回当前简历。
+  setResume: (path: string) =>
+    pyInvoke<{ filename: string; path: string }>("set_resume", { path }),
+  getResume: () => pyInvoke<{ resume: ResumeInfo | null }>("get_resume", {}),
   getLetters: (limit: number = 200) =>
     pyInvoke<{ letters: LetterRecord[] }>("get_letters", { limit }),
   getTelemetrySummary: () =>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
-import { ipc, type ProgressEvent, type RunConfig } from "../lib/ipc";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo } from "../lib/ipc";
 import { useRunStore } from "../store";
 
 // 运行页：editorial 三段式布局
@@ -16,6 +17,12 @@ export default function RunPage() {
   const [provider, setProvider] = useState("");
   const [dryRun, setDryRun] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  // 简历（拖拽上传）
+  const [resume, setResumeInfo] = useState<ResumeInfo | null>(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const running = useRunStore((s) => s.running);
   const events = useRunStore((s) => s.events);
@@ -36,6 +43,53 @@ export default function RunPage() {
         if (providers.length > 0) setProvider(providers[0]);
       })
       .catch((e) => setProvidersError(String(e)));
+  }, []);
+
+  // 挂载时读回当前简历（standalone 下持久化在 app 数据目录的 resume/）
+  useEffect(() => {
+    ipc.getResume()
+      .then(({ resume }) => setResumeInfo(resume))
+      .catch(() => {});
+  }, []);
+
+  // 拖拽上传：监听 webview 级 drag-drop 事件。这是 core API（@tauri-apps/api/webview），
+  // 已被 capabilities 的 core:default 覆盖，不需要额外 plugin / ACL 配置。
+  // 用 useRunStore.getState() 读 running 最新值，避免把 running 放进 deps 反复重订阅。
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const p = event.payload;
+        const isRunning = useRunStore.getState().running;
+        if (p.type === "enter" || p.type === "over") {
+          if (!isRunning) setDragging(true);
+        } else if (p.type === "leave") {
+          setDragging(false);
+        } else if (p.type === "drop") {
+          setDragging(false);
+          if (isRunning) return;
+          const pdf = p.paths.find((x) => x.toLowerCase().endsWith(".pdf"));
+          if (!pdf) {
+            setResumeError("只接受 PDF 文件");
+            return;
+          }
+          setResumeBusy(true);
+          setResumeError(null);
+          ipc.setResume(pdf)
+            .then((info) => setResumeInfo(info))
+            .catch((e) => setResumeError(String(e)))
+            .finally(() => setResumeBusy(false));
+        }
+      })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   // 自动滚动到底
@@ -216,6 +270,51 @@ export default function RunPage() {
               </span>
             </label>
           </Field>
+        </div>
+      </section>
+
+      {/* === 段落 2.5：简历拖拽上传 === */}
+      <section>
+        <div className="flex items-baseline justify-between">
+          <label className="field-label">简历 PDF</label>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-fg)] italic">
+            Required · 拖入即存
+          </span>
+        </div>
+        <div
+          className={[
+            "mt-2 border-2 border-dashed p-6 transition-colors duration-100",
+            dragging
+              ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
+              : "border-[var(--border-light)]",
+            running ? "opacity-50" : "",
+          ].join(" ")}
+        >
+          {resumeBusy ? (
+            <p className="font-mono text-sm">上传中…</p>
+          ) : resume ? (
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <span className="font-mono text-sm">
+                <span className="mr-2">■</span>当前简历：{resume.filename}
+              </span>
+              <span className="mono-tag">把新的 PDF 拖进来可替换</span>
+            </div>
+          ) : (
+            <>
+              <p className="font-mono text-sm">
+                <span className="mr-2">⤓</span>把简历 PDF 拖到这里 —— 上传一次，之后不用再传
+              </p>
+              <p className="mt-2 text-xs font-mono text-[var(--muted-fg)] italic">
+                没设置简历时点「开始」会直接报错。
+              </p>
+            </>
+          )}
+          {resumeError && (
+            <p className="mt-3 text-xs font-mono">
+              <span className="badge-outline mr-2">ERROR</span>
+              {resumeError}
+            </p>
+          )}
         </div>
       </section>
 
