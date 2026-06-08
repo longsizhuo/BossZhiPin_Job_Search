@@ -109,14 +109,30 @@ def patch_cargo_lock(version: str) -> bool:
     return False
 
 
+# tauri.conf.json 的 version 同时喂 Windows MSI(WiX)。WiX 只接受**纯数字**
+# 的预发布段，`0.4.0-rc3` 里的 `rc3` 非数字 → "pre-release identifier ...
+# must be numeric-only ... for msi target"，整个 Windows bundle 失败
+# （2026-06-09 CI 实测）。tauri v2 没有 wix.version 这种单独覆盖 MSI 版本的
+# 字段（schema 里不存在），所以给 tauri.conf.json 写**去掉预发布/build 段的
+# 纯数字核**（x.y.z），其它文件保留完整版本号。
+# 真正的 release（v0.4.0 无后缀）core==version，是 no-op；只有 rc/预发布 tag
+# 会被剥成数字核（installer 显示 0.4.0 而非 0.4.0-rc3，对测试无影响）。
+def _msi_core(version: str) -> str:
+    return re.split(r"[-+]", version, maxsplit=1)[0]
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         raise SystemExit("用法：python scripts/set_version.py <version|tag>")
     version = normalize(argv[1])
+    msi_core = _msi_core(version)
 
     for rel, pattern, required in TARGETS:
-        if patch_line(REPO_ROOT / rel, pattern, version, required):
-            print(f"==> {rel} → {version}")
+        # tauri.conf.json 用 MSI 安全的纯数字核，其余文件用完整版本号
+        v = msi_core if rel == "src-tauri/tauri.conf.json" else version
+        if patch_line(REPO_ROOT / rel, pattern, v, required):
+            note = "（MSI 安全核）" if v != version else ""
+            print(f"==> {rel} → {v}{note}")
     if patch_cargo_lock(version):
         print(f"==> src-tauri/Cargo.lock (boss-zhipin) → {version}")
 

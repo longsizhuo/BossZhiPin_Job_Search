@@ -52,26 +52,25 @@ def _run(repo: Path, version_arg: str) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.mark.parametrize("arg,expected", [
-    ("v0.4.0", "0.4.0"),
-    ("0.4.0-rc1", "0.4.0-rc1"),  # 预发布后缀
-    ("v1.2.3", "1.2.3"),
+# (tag 参数, TOML 等文件的完整版本, tauri.conf.json 的 MSI 安全核)
+@pytest.mark.parametrize("arg,full,msi_core", [
+    ("v0.4.0", "0.4.0", "0.4.0"),
+    ("0.4.0-rc1", "0.4.0-rc1", "0.4.0"),       # 预发布 → tauri.conf.json 剥成纯数字
+    ("v1.2.3-rc2+build5", "1.2.3-rc2+build5", "1.2.3"),
 ])
-def test_all_files_get_correct_version(fake_repo, arg, expected):
+def test_all_files_get_correct_version(fake_repo, arg, full, msi_core):
     proc = _run(fake_repo, arg)
     assert proc.returncode == 0, proc.stderr
 
-    # JSON 必须仍合法，且 version 字段正确（不是被改成 key）
+    # tauri.conf.json：仍是合法 JSON，version 取 MSI 安全核（WiX 只吃纯数字预发布段）
     conf = json.loads((fake_repo / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
-    assert conf["version"] == expected
-    # 防回归：确保没冒出个名为版本号的 property
-    assert expected not in conf or conf.get("version") == expected
+    assert conf["version"] == msi_core
     assert "productName" in conf  # 结构没被搞坏
 
-    # 三个 TOML 文件的 version 行
+    # 三个 TOML 文件拿完整版本号
     for rel in ("pyproject.toml", "src-tauri/Cargo.toml", "src/boss_zhipin/tauri/Tauri.toml"):
         text = (fake_repo / rel).read_text(encoding="utf-8")
-        assert f'version = "{expected}"' in text, f"{rel} 没注入对版本号"
+        assert f'version = "{full}"' in text, f"{rel} 没注入对版本号"
 
 
 def test_bad_version_rejected(fake_repo):
