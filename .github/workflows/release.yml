@@ -130,6 +130,11 @@ jobs:
           draft: true
           generate_release_notes: true
           fail_on_unmatched_files: true
+          # 递归 glob：Windows artifact 用了两个上传 pattern（nsis/ + msi/），
+          # upload-artifact@v4 按公共父目录保留结构 → 文件落在 windows-x64/nsis/
+          # 和 windows-x64/msi/ 子目录里，单层 `*` 匹配不到（2026-06-08 CI 实测
+          # "Pattern 'dist/windows-x64/*' does not match any files"）。macOS 单
+          # pattern 被拍平到根，`**` 同样能匹配。两边都用 `**` 兜底将来加子目录。
           files: |
-            dist/macos-arm64/*
-            dist/windows-x64/*
+            dist/macos-arm64/**
+            dist/windows-x64/**
