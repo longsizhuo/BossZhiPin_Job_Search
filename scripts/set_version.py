@@ -37,11 +37,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # (相对路径, 匹配 version 行的正则, 这个文件是否必须命中)。
 # 正则都只替换**第一处**命中，避免误伤依赖项的 version 字段（比如
 # Cargo.toml 里 `tauri-build = { version = "2" }` 不在行首，不会被 `^version` 命中）。
+#
+# 每条正则用两个捕获组把**值**框住：group(1) = 值前缀（含开引号），
+# group(2) = 闭引号；中间 `[^"]*` 是旧值。替换时拼 group(1)+version+group(2)，
+# 只动值、不动 key。
+# （别用"替换 match 里第一个带引号 token"那种写法：JSON 的 `"version": "x"`
+#  第一个带引号 token 是 key `"version"`，会被错改成 `"0.4.0-rc1": "x"`，
+#  把 tauri.conf.json 结构搞坏 → "Additional properties not allowed"，
+#  2026-06-09 CI 实测翻车。）
 TARGETS: list[tuple[str, str, bool]] = [
-    ("pyproject.toml", r'(?m)^version = "[^"]*"', True),
-    ("src-tauri/Cargo.toml", r'(?m)^version = "[^"]*"', True),
-    ("src-tauri/tauri.conf.json", r'"version":\s*"[^"]*"', True),
-    ("src/boss_zhipin/tauri/Tauri.toml", r'(?m)^version = "[^"]*"', True),
+    ("pyproject.toml", r'(?m)^(version = ")[^"]*(")', True),
+    ("src-tauri/Cargo.toml", r'(?m)^(version = ")[^"]*(")', True),
+    ("src-tauri/tauri.conf.json", r'("version":\s*")[^"]*(")', True),
+    ("src/boss_zhipin/tauri/Tauri.toml", r'(?m)^(version = ")[^"]*(")', True),
 ]
 
 
@@ -63,10 +71,11 @@ def patch_line(path: Path, pattern: str, version: str, required: bool) -> bool:
         return False
 
     text = path.read_text(encoding="utf-8")
-    # 重建匹配行：保留原来的 key/标点，只换引号里的值。
+    # 重建匹配行：group(1)=值前缀(含开引号)，group(2)=闭引号，只换中间的值。
+    # 用 callable 替换而非替换串，免去 version 里 `\` / `\g` 被当反向引用的坑。
     new_text, n = re.subn(
         pattern,
-        lambda m: re.sub(r'"[^"]*"', f'"{version}"', m.group(0), count=1),
+        lambda m: m.group(1) + version + m.group(2),
         text,
         count=1,
     )

@@ -62,18 +62,31 @@ if (-not (Test-Path $EmbedPy)) {
     try {
         uv python install $PythonSeries
         if ($LASTEXITCODE -ne 0) { throw "uv python install 失败（exit $LASTEXITCODE）" }
-        # uv 落盘目录名带完整版本号（cpython-3.13.x-x86_64-pc-windows-msvc-shared），
-        # 规范成 python/ 让后续路径稳定
-        $SrcDir = Get-ChildItem -Path $DownloadDir -Directory -Filter 'cpython-*' |
-                  Select-Object -First 1
-        if (-not $SrcDir) { throw "没找到 uv 下载的 cpython 目录" }
-        Move-Item -Path $SrcDir.FullName -Destination (Join-Path $PyembedDir 'python')
+        # uv 落盘布局随版本变：有时是 cpython-3.13.x-.../python.exe（扁平），
+        # 有时 python.exe 嵌在再下一层（cpython-.../install/python.exe）。
+        # 别假设 cpython-*/ 根下就是 python.exe（2026-06-09 CI 实测 python.exe
+        # 不在 pyembed\python\ 根下，bundle 后续路径全错）。
+        # 做法：递归找 python.exe，取**最浅**的那个（venv 模板里的 python.exe
+        # 深埋在 Lib\venv\... 下，路径更长会被排到后面），把它所在目录整个
+        # 规范成 pyembed\python\，保证 pyembed\python\python.exe 成立。
+        $RealPyExe = Get-ChildItem -Path $DownloadDir -Recurse -Filter 'python.exe' -File -ErrorAction SilentlyContinue |
+                     Sort-Object { $_.FullName.Length } | Select-Object -First 1
+        if (-not $RealPyExe) { throw "下载目录里没找到 python.exe：$DownloadDir" }
+        Move-Item -Path $RealPyExe.Directory.FullName -Destination (Join-Path $PyembedDir 'python')
         Remove-Item -Recurse -Force $DownloadDir
     } finally {
         Remove-Item Env:UV_PYTHON_INSTALL_DIR -ErrorAction SilentlyContinue
     }
 }
 
+# 规范化之后 $EmbedPy（= pyembed\python\python.exe）必须成立；不成立就把
+# 实际目录树打出来便于诊断 uv 布局，而不是丢一个含糊的 "term not recognized"。
+if (-not (Test-Path -PathType Leaf $EmbedPy)) {
+    Write-Host "==> 预期的 $EmbedPy 不存在，pyembed\python 实际布局（前 40 项）："
+    Get-ChildItem -Path (Join-Path $PyembedDir 'python') -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 40 | ForEach-Object { Write-Host "    $($_.FullName)" }
+    throw "嵌入式 python.exe 路径不对：$EmbedPy（见上方实际布局）"
+}
 $PyVersion = & $EmbedPy --version
 if ($LASTEXITCODE -ne 0) { throw "嵌入式 python.exe 跑不起来：$EmbedPy" }
 Write-Host "==> 嵌入式 Python: $PyVersion"
