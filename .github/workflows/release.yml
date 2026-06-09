@@ -62,12 +62,26 @@ jobs:
       - uses: actions/checkout@v4
 
       # uv：装嵌入式 Python + 业务 deps
+      # enable-cache：缓存 UV_CACHE_DIR（下载的 wheel + python-build-standalone
+      # 归档）。最大的赢面是 torch 这种几百 MB 的轮子不用每次重下；按 uv.lock
+      # 做 key，依赖没变就命中。
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       # Rust：编译 src-tauri/ 的 Rust binary
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      # cargo 缓存：~/.cargo registry/git + src-tauri/target。按 Cargo.lock 做
+      # key（restore 时算，早于 set_version 改版本号，所以版本 bump 不抖 key）。
+      # 依赖编译产物复用，只有 boss-zhipin 自己的 crate 因版本变重编。
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       # pnpm + node：build_standalone 内部会调 pnpm install + tauri build
       # node-version 跟本地 24.x 对齐
@@ -79,6 +93,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
+          # pnpm store 缓存：按 tauri-ui 的 lockfile 做 key（pnpm 已先装好）
+          cache: pnpm
+          cache-dependency-path: tauri-ui/pnpm-lock.yaml
 
       # tag 是版本号的 single source of truth：把 v0.4.0 → 0.4.0 注入到
       # pyproject / Cargo.toml / tauri.conf.json / wheel Tauri.toml，build 出来
