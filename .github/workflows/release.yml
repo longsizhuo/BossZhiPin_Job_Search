@@ -63,13 +63,17 @@ jobs:
 
       # uv：装嵌入式 Python + 业务 deps
       # enable-cache：缓存 UV_CACHE_DIR（下载的 wheel + python-build-standalone
-      # 归档）。最大的赢面是 torch 这种几百 MB 的轮子不用每次重下；按 uv.lock
-      # 做 key，依赖没变就命中。
+      # 归档）。最大的赢面是 torch 这种几百 MB 的轮子不用每次重下。
+      # cache key 同时挂 pyproject.toml：build 装的是 `[standalone]` extra（从
+      # pyproject 解析），torch 经 base deps 间接引入；只挂 uv.lock 的话改
+      # pyproject 依赖不会让 key 失效。两个都挂，依赖声明一变就重算。
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          cache-dependency-glob: "uv.lock"
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
 
       # Rust：编译 src-tauri/ 的 Rust binary
       - name: Setup Rust toolchain
@@ -102,8 +106,22 @@ jobs:
       # 的产物版本号跟 release tag 永远一致（仓库里 committed 的版本号只是
       # 本地 dev build 的占位默认值）。uv run 在 mac/windows 上行为一致，
       # 不用为两个 shell 写两份。
+      # ref_name 经 env 传入，不直接拼进 run: 脚本文本——避免带引号/分号的
+      # 恶意 tag 名（需 push 权限才能打，trust boundary 小但仍是经典 GHA
+      # 表达式注入面）被 shell 解析执行。set_version 把它当单个 argv 收。
       - name: Set version from tag
-        run: uv run --no-project python scripts/set_version.py "${{ github.ref_name }}"
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: uv run --no-project python scripts/set_version.py "$REF_NAME"
+
+      # cargo 缓存会把整个 src-tauri/target 还原回来，可能夹带上一个版本
+      # tauri-bundler 写在 bundle-release/bundle/ 下的旧安装包（dmg/exe/msi）。
+      # bundler 不保证清旧产物 → 上传 glob 可能同时匹配到旧版本 asset。
+      # build 前先清掉这层 bundle 输出，保证只发当前版本的产物（cargo 的依赖
+      # 编译缓存在 target 其它位置，不受影响）。
+      - name: Clean stale bundle output (cache hygiene)
+        shell: bash
+        run: rm -rf src-tauri/target/bundle-release/bundle
 
       # 跑你本地一直在用的 build 脚本，不重新发明轮子
       - name: Run build script

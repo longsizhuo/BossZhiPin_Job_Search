@@ -54,6 +54,22 @@ if [[ ! -x "$PYEMBED_DIR/python/bin/python3" ]]; then
     rm -rf "$PYEMBED_DIR/_download"
 fi
 EMBED_PY="$PYEMBED_DIR/python/bin/python3"
+# 纯增兜底（当前扁平布局走不到，行为不变）：uv 个别版本把 python 嵌在多一层，
+# 导致 python/bin/python3 不在预期位置（.ps1 在 Windows 上已遇过同款漂移）。
+# 仅当预期路径缺失时，递归找真正的 bin/python3 并把它所在的 python 根扶正，
+# 保证 python/bin 与 python/lib 子路径都成立；找不到就给清晰诊断而非 set -e 裸退。
+if [[ ! -x "$EMBED_PY" ]]; then
+    real_py=$(find "$PYEMBED_DIR/python" -type f -name python3 -path '*/bin/*' 2>/dev/null | sort | head -1)
+    if [[ -n "$real_py" ]]; then
+        real_root=$(cd "$(dirname "$real_py")/.." && pwd)
+        if [[ "$real_root" != "$PYEMBED_DIR/python" ]]; then
+            mv "$real_root" "$PYEMBED_DIR/_relayout"
+            rm -rf "$PYEMBED_DIR/python"
+            mv "$PYEMBED_DIR/_relayout" "$PYEMBED_DIR/python"
+        fi
+    fi
+fi
+[[ -x "$EMBED_PY" ]] || { echo "❌ 没找到嵌入式 python3，pyembed/python 实际布局："; find "$PYEMBED_DIR/python" -maxdepth 3 2>/dev/null; exit 1; }
 echo "==> 嵌入式 Python: $("$EMBED_PY" --version)"
 
 # ---------- 2. macOS：libpython install_name 打 @rpath 补丁 ----------
