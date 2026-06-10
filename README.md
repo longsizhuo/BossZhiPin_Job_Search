@@ -86,9 +86,9 @@ Standalone 模式的用户数据（`.env` / `chrome_profile/` / `logs/` /
 | `BOSS_LABEL` | 求职 tag，比如"后端开发（成都）" | 否（不填就用 BOSS 默认推荐 feed） |
 | `RESUME_PATH` | 简历 PDF 路径 | 否（默认 `./resume/my_cover.pdf`） |
 | `DRY_RUN` | `1` = 只生成不发送 | 否 |
-| `BOSS_CHROME_PROFILE` | 自定义 Chrome profile 目录 | 否（默认 `./chrome_profile`） |
-| `LETTER_MIN_LEN` / `LETTER_MAX_LEN` | 招呼语长度边界 | 否（默认 30 / 800） |
-| `LETTER_LOG_PATH` | 审计日志路径 | 否（默认 `./logs/letters.jsonl`） |
+| `BOSS_MIN_MATCH_SCORE` | LLM 匹配分阈值 | 否（默认 50） |
+| `BOSS_EXCLUDE_KEYWORDS` | 岗位黑名单关键字（用逗号分隔，如"外包,驻场"） | 否 |
+| `LOGLEVEL` | 日志级别 | 否（默认 INFO） |
 
 **只配一个 key 时脚本会自动选用，不会让你选**；配多个时启动时让你选；一个都不配会列出 signup 链接然后退出。
 

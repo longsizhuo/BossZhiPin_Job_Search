@@ -12,10 +12,18 @@ type RunState = {
   logs: string[];
   currentIndex: number | null;  // 当前 job_index（从 job_found 提取）
 
+  // Form states preserved across tabs
+  formUsrName: string;
+  formLabel: string;
+  formProvider: string;
+  formDryRun: boolean;
+
   setRunning: (running: boolean) => void;
   pushEvent: (ev: ProgressEvent) => void;
   pushLog: (line: string) => void;
   clear: () => void;
+  
+  setFormState: (state: Partial<Pick<RunState, "formUsrName" | "formLabel" | "formProvider" | "formDryRun">>) => void;
 };
 
 export const useRunStore = create<RunState>((set) => ({
@@ -23,6 +31,11 @@ export const useRunStore = create<RunState>((set) => ({
   events: [],
   logs: [],
   currentIndex: null,
+
+  formUsrName: "",
+  formLabel: "",
+  formProvider: "",
+  formDryRun: true,
 
   setRunning: (running) => set({ running }),
   pushEvent: (ev) =>
@@ -40,4 +53,5 @@ export const useRunStore = create<RunState>((set) => ({
     }),
   pushLog: (line) => set((s) => ({ logs: [...s.logs, line].slice(-MAX_LOGS) })),
   clear: () => set({ events: [], logs: [], currentIndex: null }),
+  setFormState: (state) => set((s) => ({ ...s, ...state })),
 }));

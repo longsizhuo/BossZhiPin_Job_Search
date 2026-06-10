@@ -12,10 +12,6 @@ import { useRunStore } from "../store";
 export default function RunPage() {
   const [providers, setProviders] = useState<string[]>([]);
   const [providersError, setProvidersError] = useState<string | null>(null);
-  const [usrName, setUsrName] = useState("");
-  const [label, setLabel] = useState("");
-  const [provider, setProvider] = useState("");
-  const [dryRun, setDryRun] = useState(true);
   const [busy, setBusy] = useState(false);
 
   // 简历（拖拽上传）
@@ -23,6 +19,13 @@ export default function RunPage() {
   const [resumeBusy, setResumeBusy] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  // Global form states
+  const usrName = useRunStore((s) => s.formUsrName);
+  const label = useRunStore((s) => s.formLabel);
+  const provider = useRunStore((s) => s.formProvider);
+  const dryRun = useRunStore((s) => s.formDryRun);
+  const setFormState = useRunStore((s) => s.setFormState);
 
   const running = useRunStore((s) => s.running);
   const events = useRunStore((s) => s.events);
@@ -40,9 +43,28 @@ export default function RunPage() {
     ipc.detectProviders()
       .then(({ providers }) => {
         setProviders(providers);
-        if (providers.length > 0) setProvider(providers[0]);
+        if (providers.length > 0 && !useRunStore.getState().formProvider) {
+          setFormState({ formProvider: providers[0] });
+        }
       })
       .catch((e) => setProvidersError(String(e)));
+
+    ipc.getEnvFields().then(({ fields }) => {
+      const stateUpdate: Record<string, any> = {};
+      const nameField = fields.find(f => f.key === "BOSS_USR_NAME");
+      if (nameField && nameField.value && !useRunStore.getState().formUsrName) {
+        stateUpdate.formUsrName = nameField.value;
+      }
+      
+      const labelField = fields.find(f => f.key === "BOSS_LABEL");
+      if (labelField && labelField.value && !useRunStore.getState().formLabel) {
+        stateUpdate.formLabel = labelField.value;
+      }
+      
+      if (Object.keys(stateUpdate).length > 0) {
+        setFormState(stateUpdate);
+      }
+    }).catch(() => {});
   }, []);
 
   // 挂载时读回当前简历（standalone 下持久化在 app 数据目录的 resume/）
@@ -199,7 +221,7 @@ export default function RunPage() {
             <input
               type="text"
               value={usrName}
-              onChange={(e) => setUsrName(e.target.value)}
+              onChange={(e) => setFormState({ formUsrName: e.target.value })}
               disabled={running}
               className="field-input"
               placeholder="必填，会出现在招呼语末尾"
@@ -210,7 +232,7 @@ export default function RunPage() {
             <input
               type="text"
               value={label}
-              onChange={(e) => setLabel(e.target.value)}
+              onChange={(e) => setFormState({ formLabel: e.target.value })}
               disabled={running}
               className="field-input"
               placeholder="留空走 BOSS 推荐 feed"
@@ -231,7 +253,7 @@ export default function RunPage() {
             ) : (
               <select
                 value={provider}
-                onChange={(e) => setProvider(e.target.value)}
+                onChange={(e) => setFormState({ formProvider: e.target.value })}
                 disabled={running}
                 className="field-input"
               >
@@ -258,7 +280,7 @@ export default function RunPage() {
                 <input
                   type="checkbox"
                   checked={dryRun}
-                  onChange={(e) => setDryRun(e.target.checked)}
+                  onChange={(e) => setFormState({ formDryRun: e.target.checked })}
                   disabled={running}
                   className="sr-only"
                 />

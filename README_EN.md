@@ -66,6 +66,8 @@ The repo ships a fully-commented template at [`.env.example`](.env.example). Hig
 | `BOSS_LABEL` | Job category tag, e.g. `"Backend Engineer (Shanghai)"` | no — empty = BOSS's default recommended feed |
 | `RESUME_PATH` | Path to your PDF resume | no — defaults to `./resume/my_cover.pdf` |
 | `DRY_RUN` | `1` = generate & log but don't send | no |
+| `BOSS_MIN_MATCH_SCORE` | LLM match score threshold | no — default 50 |
+| `BOSS_EXCLUDE_KEYWORDS` | Blacklist keywords (comma separated) to skip jobs | no |
 | `BOSS_CHROME_PROFILE` | Custom Chrome profile dir | no — defaults to `./chrome_profile` |
 | `LETTER_MIN_LEN` / `LETTER_MAX_LEN` | Letter length bounds | no — default 30 / 800 |
 | `LETTER_LOG_PATH` | Audit log path | no — default `./logs/letters.jsonl` |
