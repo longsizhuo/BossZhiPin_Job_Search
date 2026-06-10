@@ -172,7 +172,10 @@ def llm_match_score(
         ok=True,
     )
 
-    score_match = re.search(r"分数:\s*(\d+)", content)
+    # 冒号同时容忍 ASCII ":" 和全角 "："——中文 LLM（尤其 DeepSeek）即便 prompt
+    # 给的是 ASCII 冒号，回复也常用全角。只认 ASCII 会让解析静默失败 → fail-open
+    # 恒返 100 → 第二层 LLM 过滤被悄悄绕过。
+    score_match = re.search(r"分数[:：]\s*(\d+)", content)
     if not score_match:
         # LLM 没按格式回复时同样 fail-open；fail-closed（按 0 分算）
         # 会把职位静默跳过，且日志里看不出原因
@@ -180,7 +183,7 @@ def llm_match_score(
         return 100, "评分解析失败"
 
     score = min(100, max(0, int(score_match.group(1))))
-    reason_match = re.search(r"理由:\s*(.+)", content)
+    reason_match = re.search(r"理由[:：]\s*(.+)", content)
     reason = reason_match.group(1).strip() if reason_match else ""
     return score, reason
 
