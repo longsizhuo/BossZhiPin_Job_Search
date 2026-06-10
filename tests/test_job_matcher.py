@@ -14,11 +14,19 @@ import pytest
 
 from boss_zhipin.models import job_matcher
 from boss_zhipin.models.job_matcher import (
+    _find_keywords,
     extract_keywords_from_text,
     keyword_match,
     llm_match_score,
     should_apply,
 )
+
+# 临时定义一个 TECH_KEYWORDS 给测试使用
+TECH_KEYWORDS = [
+    "Python", "Django", "Docker", "机器学习", 
+    "Go", "AI", "API", "RESTful",
+    ".NET", "C++", "Node.js"
+]
 
 
 def _fake_response(content: str):
@@ -52,13 +60,13 @@ def fake_client(monkeypatch):
 class TestExtractKeywords:
     def test_happy_path(self):
         text = "精通 Python 和 Django，熟悉 Docker 容器化部署，有机器学习项目经验"
-        keywords = extract_keywords_from_text(text)
+        keywords = _find_keywords(text, TECH_KEYWORDS)
         assert {"Python", "Django", "Docker", "机器学习"} <= set(keywords)
 
     def test_short_keywords_not_matched_as_substring(self):
         # "Go" 不该命中 Google、"AI" 不该命中 Maintained、"API" 不该命中 Rapid
         text = "Maintained legacy services at Google with rapid iteration"
-        keywords = extract_keywords_from_text(text)
+        keywords = _find_keywords(text, TECH_KEYWORDS)
         assert "Go" not in keywords
         assert "AI" not in keywords
         assert "API" not in keywords
@@ -66,17 +74,17 @@ class TestExtractKeywords:
     def test_short_keywords_matched_at_word_boundary(self):
         # 中文紧贴英文关键词是 BOSS JD 的常态，必须能命中
         text = "负责AI产品研发，使用Go语言开发RESTful API服务"
-        keywords = extract_keywords_from_text(text)
+        keywords = _find_keywords(text, TECH_KEYWORDS)
         assert {"AI", "Go", "API", "RESTful"} <= set(keywords)
 
     def test_keywords_with_special_chars(self):
         # ".NET" 要能命中 "ASP.NET"，"C++" 要能命中 "C++11"
         text = "5年 ASP.NET 开发经验，熟悉 C++11 标准和 Node.js"
-        keywords = extract_keywords_from_text(text)
+        keywords = _find_keywords(text, TECH_KEYWORDS)
         assert {".NET", "C++", "Node.js"} <= set(keywords)
 
     def test_case_insensitive(self):
-        keywords = extract_keywords_from_text("熟悉 PYTHON 和 docker")
+        keywords = _find_keywords("熟悉 PYTHON 和 docker", TECH_KEYWORDS)
         assert {"Python", "Docker"} <= set(keywords)
 
 

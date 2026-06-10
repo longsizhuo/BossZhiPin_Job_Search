@@ -182,6 +182,7 @@ async def send_job_descriptions_to_chat(
     resume_text: str | None = None,
     min_keyword_match: int = 2,
     min_llm_score: int = 70,
+    exclude_keywords: list[str] | None = None,
 ) -> None:
     """主循环（async）。
 
@@ -218,24 +219,34 @@ async def send_job_descriptions_to_chat(
                 element = await finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 log.info("chat 按钮文字: %r", element)
                 if element == "立即沟通":
-                    # ====== 两层过滤：关键词匹配 + LLM 评分 ======
-                    if resume_keywords and resume_text:
+                    # ====== 多层过滤：黑名单 + 关键词 + 向量 + LLM ======
+                    if resume_text:
                         apply, details = await asyncio.to_thread(
                             should_apply,
                             job_description, resume_keywords, resume_text,
-                            min_keyword_match, min_llm_score,
+                            min_keyword_match, min_llm_score, exclude_keywords, vectorstore
                         )
                         if not apply:
                             stage = details.get("stage", "unknown")
-                            if stage == "keyword":
+                            if stage == "blacklist":
+                                log.info(
+                                    "⏭️ [跳过 #%d] 触发黑名单: %s",
+                                    job_index, details["reason"],
+                                )
+                            elif stage == "keyword":
                                 log.info(
                                     "⏭️ [跳过 #%d] 关键词匹配不足: 命中 %s - %s",
                                     job_index, details["matched_keywords"], details["reason"],
                                 )
+                            elif stage == "vector_search":
+                                log.info(
+                                    "⏭️ [跳过 #%d] 语义不匹配: %s",
+                                    job_index, details["reason"],
+                                )
                             else:
                                 log.info(
                                     "⏭️ [跳过 #%d] LLM 评分 %s/%s: %s",
-                                    job_index, details["score"], details["threshold"], details["reason"],
+                                    job_index, details.get("score"), details.get("threshold"), details.get("reason"),
                                 )
                             _emit_progress(
                                 "job_skipped",

@@ -39,7 +39,7 @@ from boss_zhipin.providers import (
     PROVIDER_SIGNUP,
     detect_providers,
 )
-from boss_zhipin.vectorization import embed_pdf
+from boss_zhipin.vectorization import embed_resume
 from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat
 
 log = logging.getLogger(__name__)
@@ -133,8 +133,13 @@ async def run_provider(
     resume_text = extract_resume_text(resume_path)
     resume_keywords = extract_keywords_from_text(resume_text)
     log.info("📋 从简历中提取到 %d 个关键词: %s", len(resume_keywords), resume_keywords)
+    # 提前为所有 provider 创建向量库，用于语义粗筛
+    vectorstore = embed_resume(resume_text, "./vectorstores")
+    
     # LLM 匹配分阈值，低于该分跳过不投；可用 BOSS_MIN_MATCH_SCORE 覆盖
     min_llm_score = int(os.getenv("BOSS_MIN_MATCH_SCORE", "50"))
+    exclude_str = os.getenv("BOSS_EXCLUDE_KEYWORDS", "")
+    exclude_keywords = [k.strip() for k in exclude_str.split(",") if k.strip()] if exclude_str else None
 
     common_kwargs = dict(
         usr_name=usr_name,
@@ -145,6 +150,8 @@ async def run_provider(
         resume_keywords=resume_keywords,
         resume_text=resume_text,
         min_llm_score=min_llm_score,
+        exclude_keywords=exclude_keywords,
+        vectorstore=vectorstore,
     )
 
     if provider == "chatgpt":
@@ -171,10 +178,8 @@ async def run_provider(
         )
     else:
         # deepseek / claude：除了 provider 名，调用完全一致
-        vectorstore = embed_pdf(resume_path, "./vectorstores")
         await send_job_descriptions_to_chat(
             models=provider,
-            vectorstore=vectorstore,
             **common_kwargs,
         )
 

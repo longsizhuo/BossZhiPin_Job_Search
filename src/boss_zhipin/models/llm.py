@@ -20,7 +20,7 @@ from openai import OpenAI
 from boss_zhipin.audit.telemetry import record_llm_call
 from boss_zhipin.models.prompts import assistant_instructions
 from boss_zhipin.utils.retry import retry_with_backoff
-from boss_zhipin.vectorization import VectorStore, embed_pdf
+from boss_zhipin.vectorization import VectorStore, embed_resume
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -139,10 +139,15 @@ def generate_letter(
 
 
 if __name__ == "__main__":
+    from boss_zhipin.models.job_matcher import extract_resume_text
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     usr_name = "龙思卓"
-    vectorstore = embed_pdf("../resume/my_cover.pdf", "./vectorstores")
-    job_description = """岗位职责：
+    resume_path = "../resume/my_cover.pdf"
+    import os
+    if os.path.exists(resume_path):
+        resume_text = extract_resume_text(resume_path)
+        vectorstore = embed_resume(resume_text, "./vectorstores")
+        job_description = """岗位职责：
 1、负责AI对话工作流的设计与搭建，包括但不限于客服、销售等场景 。
 2、进行提示词工程开发与优化，构建高质量的AI交互体验 。
 
@@ -150,4 +155,6 @@ if __name__ == "__main__":
 1、本科及以上学历，计算机相关专业优先 。
 2、熟练使用Coze/Dify/FastGPT等AI工作流搭建工具。
 """
-    print(generate_letter(usr_name, vectorstore, job_description, model="deepseek"))
+        print(generate_letter(usr_name, vectorstore, job_description, model="deepseek"))
+    else:
+        print(f"Skipping test, resume file not found: {resume_path}")

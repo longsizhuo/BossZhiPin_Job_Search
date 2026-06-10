@@ -6,9 +6,12 @@
 from __future__ import annotations
 
 import functools
+import hashlib
+import json
 import logging
 import re
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pypdf import PdfReader
@@ -19,40 +22,7 @@ from boss_zhipin.models.llm import _build_client, _call_chat_completion
 load_dotenv()
 log = logging.getLogger(__name__)
 
-# 预定义的职位类型关键词库，用于从简历中识别技能和方向
-TECH_KEYWORDS = [
-    # 开发方向
-    "后端开发", "前端开发", "全栈开发", "移动开发", "客户端开发",
-    "iOS开发", "Android开发", "嵌入式开发", "游戏开发", "小程序开发",
-    # 技术栈
-    "Python", "Java", "JavaScript", "TypeScript", "Go", "Golang",
-    "C++", "C#", "Rust", "PHP", "Ruby", "Swift", "Kotlin", "Scala",
-    "React", "Vue", "Angular", "Node.js", "Django", "Flask", "FastAPI",
-    "Spring", "SpringBoot", "Spring Boot", "MyBatis", "Hibernate",
-    ".NET", "Flutter", "React Native", "UniApp",
-    # 数据与AI
-    "数据分析", "数据开发", "数据挖掘", "数据仓库", "大数据",
-    "机器学习", "深度学习", "自然语言处理", "NLP", "计算机视觉", "CV",
-    "人工智能", "AI", "LLM", "大模型", "AIGC", "RAG",
-    "数据库", "MySQL", "PostgreSQL", "MongoDB", "Redis", "Elasticsearch",
-    "Hadoop", "Spark", "Flink", "Kafka", "Hive",
-    # 运维与云
-    "运维", "DevOps", "SRE", "云计算", "云原生",
-    "Docker", "Kubernetes", "K8s", "AWS", "Azure", "GCP", "阿里云", "腾讯云",
-    "Linux", "CI/CD", "Jenkins", "Terraform",
-    # 测试
-    "测试", "自动化测试", "性能测试", "测试开发", "QA",
-    "Selenium", "Pytest", "JUnit",
-    # 产品与设计
-    "产品经理", "项目管理", "UI设计", "UX设计", "交互设计",
-    # 安全
-    "网络安全", "信息安全", "安全开发", "渗透测试",
-    # 通用技能
-    "微服务", "分布式", "高并发", "高可用", "消息队列",
-    "RESTful", "API", "GraphQL", "gRPC", "WebSocket",
-    "Git", "Agile", "Scrum",
-]
-
+# 预定义的职位类型关键词库，用于从简历中识别技能和方向已移除（完全使用动态提取）
 
 @functools.lru_cache(maxsize=None)
 def _keyword_pattern(keyword: str) -> re.Pattern[str]:
@@ -83,9 +53,73 @@ def extract_resume_text(pdf_path: str) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
+def _llm_extract_keywords(resume_text: str) -> list[str]:
+    """使用 LLM 从简历中提取技术关键词。"""
+    try:
+        client, llm_model = _build_client("deepseek")
+    except RuntimeError:
+        log.warning("DEEPSEEK_API_KEY 未设置，无法提取专属关键词")
+        return []
+
+    prompt = f"""你是一位资深的 HR 和技术专家。请从以下简历中提取出该候选人的核心技术栈、使用的工具、以及相关的业务方向。
+要求：
+1. 结果必须是一个纯 JSON 数组，包含字符串格式的关键词（例如：["Java", "Spring Boot", "后端开发", "MySQL"]）。
+2. 不要包含任何多余的文本、解释或 Markdown 代码块标记（不要写 ```json）。
+3. 关键词数量在 10 到 30 个之间，越核心的技术越靠前。
+
+简历内容：
+{resume_text[:3000]}
+"""
+    t0 = time.monotonic()
+    try:
+        response = _call_chat_completion(
+            client,
+            model=llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=300,
+        )
+        content = response.choices[0].message.content or ""
+        # 简单清理可能带上的 Markdown 标记
+        content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        keywords = json.loads(content)
+        if isinstance(keywords, list) and all(isinstance(k, str) for k in keywords):
+            log.info("🎯 LLM 成功提取出专属关键词: %s", keywords)
+            return keywords
+        log.warning("LLM 返回的格式不是字符串数组: %s", content)
+    except Exception as e:
+        log.warning("LLM 提取关键词失败 (%s)，无法提取专属关键词", e)
+
+    return []
+
+
 def extract_keywords_from_text(resume_text: str) -> list[str]:
-    """从简历全文中提取技术关键词，大小写不敏感。"""
-    return _find_keywords(resume_text, TECH_KEYWORDS)
+    """从简历全文中提取技术关键词（大小写不敏感），带有本地持久化缓存。"""
+    text_hash = hashlib.md5(resume_text.encode('utf-8')).hexdigest()
+    cache_dir = Path("vectorstores") / text_hash
+    cache_file = cache_dir / "keywords.json"
+
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cached_keywords = json.load(f)
+                if isinstance(cached_keywords, list):
+                    log.info("✅ 已从本地缓存读取专属简历关键词（%d个）", len(cached_keywords))
+                    return cached_keywords
+        except Exception as e:
+            log.warning("读取缓存关键词失败: %s", e)
+
+    keywords = _llm_extract_keywords(resume_text)
+    
+    # 存入缓存
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(keywords, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log.warning("保存缓存关键词失败: %s", e)
+
+    return keywords
 
 
 def extract_keywords_from_resume(pdf_path: str) -> list[str]:
@@ -194,18 +228,42 @@ def should_apply(
     resume_text: str,
     min_keyword_match: int = 2,
     min_llm_score: int = 70,
+    exclude_keywords: list[str] | None = None,
+    vectorstore=None,
 ) -> tuple[bool, dict]:
-    """两层过滤：先关键词粗筛，再 LLM 精筛。"""
-    keyword_passed, matched_keywords = keyword_match(
-        job_description, resume_keywords, min_keyword_match
-    )
+    """多层过滤：黑名单 -> 关键词粗筛 -> 向量语义粗筛 -> LLM 精筛。"""
+    
+    if exclude_keywords:
+        for ex_kw in exclude_keywords:
+            if _keyword_pattern(ex_kw).search(job_description):
+                return False, {
+                    "stage": "blacklist",
+                    "reason": f"命中黑名单关键词: {ex_kw}",
+                }
 
-    if not keyword_passed:
-        return False, {
-            "stage": "keyword",
-            "matched_keywords": matched_keywords,
-            "reason": f"关键词匹配不足（命中 {len(matched_keywords)}/{min_keyword_match}）",
-        }
+    if resume_keywords:
+        keyword_passed, matched_keywords = keyword_match(
+            job_description, resume_keywords, min_keyword_match
+        )
+
+        if not keyword_passed:
+            return False, {
+                "stage": "keyword",
+                "matched_keywords": matched_keywords,
+                "reason": f"关键词匹配不足（命中 {len(matched_keywords)}/{min_keyword_match}）",
+            }
+    else:
+        matched_keywords = []
+
+    if vectorstore is not None:
+        is_relevant, distance = vectorstore.check_relevance(job_description)
+        if not is_relevant:
+            return False, {
+                "stage": "vector_search",
+                "reason": f"语义匹配度过低 (距离 {distance:.2f} > 阈值)",
+            }
+        else:
+            log.debug("语义距离验证通过 (距离: %.2f)", distance)
 
     score, reason = llm_match_score(job_description, resume_text, matched_keywords)
 

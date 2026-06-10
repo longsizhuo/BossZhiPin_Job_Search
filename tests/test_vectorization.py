@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from boss_zhipin.vectorization import file_hash, split_text
+from boss_zhipin.vectorization import split_text, text_hash
 
 
 # ---------- split_text ----------
@@ -55,26 +55,16 @@ class TestSplitText:
             assert "求职者" in c or "简历" in c or "内容" in c
 
 
-# ---------- file_hash ----------
+# ---------- text_hash ----------
 
-class TestFileHash:
-    def test_same_content_same_hash(self, tmp_path):
-        a = tmp_path / "a.pdf"
-        b = tmp_path / "b.pdf"
-        a.write_bytes(b"hello world")
-        b.write_bytes(b"hello world")
-        assert file_hash(str(a)) == file_hash(str(b))
+class TestTextHash:
+    def test_same_content_same_hash(self):
+        assert text_hash("hello world") == text_hash("hello world")
 
-    def test_different_content_different_hash(self, tmp_path):
-        a = tmp_path / "a.pdf"
-        b = tmp_path / "b.pdf"
-        a.write_bytes(b"hello world")
-        b.write_bytes(b"hello world!")
-        assert file_hash(str(a)) != file_hash(str(b))
+    def test_different_content_different_hash(self):
+        assert text_hash("hello world") != text_hash("hello world!")
 
-    def test_hash_is_md5_hex(self, tmp_path):
-        f = tmp_path / "x.pdf"
-        f.write_bytes(b"x")
-        h = file_hash(str(f))
+    def test_hash_is_md5_hex(self):
+        h = text_hash("x")
         assert len(h) == 32
         assert all(c in "0123456789abcdef" for c in h)
