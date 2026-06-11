@@ -6,7 +6,7 @@
 
 [package]
 name = "boss-zhipin"
-version = "0.3.1"
+version = "0.4.1"
 description = "BOSS Zhipin Helper (PyTauri standalone)"
 authors = ["longsizhuo"]
 edition = "2021"

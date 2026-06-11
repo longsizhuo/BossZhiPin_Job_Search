@@ -49,7 +49,7 @@ jobs:
           uv run python -c "from boss_zhipin.audit import validate_letter, log_attempt"
           uv run python -c "from boss_zhipin.audit.telemetry import record_llm_call, telemetry_summary, estimate_cost_cny"
           uv run python -c "from boss_zhipin.utils.retry import retry_with_backoff"
-          uv run python -c "from boss_zhipin.vectorization import VectorStore, embed_pdf, file_hash, split_text"
+          uv run python -c "from boss_zhipin.vectorization import VectorStore, embed_resume, text_hash, split_text"
           uv run python -c "from boss_zhipin.models.llm import PROVIDERS, generate_letter, _build_client"
           uv run python -c "from boss_zhipin.models.openai_assistant import create_assistant, OPENAI_API_KEY"
           uv run python -c "from boss_zhipin.models.prompts import assistant_instructions"
