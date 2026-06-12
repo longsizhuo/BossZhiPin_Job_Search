@@ -112,6 +112,7 @@ jobs:
       - name: Set version from tag
         env:
           REF_NAME: ${{ github.ref_name }}
+        shell: bash
         run: uv run --no-project python scripts/set_version.py "$REF_NAME"
 
       # cargo 缓存会把整个 src-tauri/target 还原回来，可能夹带上一个版本
