@@ -402,17 +402,7 @@ export default function RunPage() {
               </span>
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="mono-tag">拖入新 PDF 可替换，或</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                  disabled={running}
-                  className="btn-outline text-xs"
-                >
-                  选择文件…
-                </button>
+                <PickFileButton onPick={() => fileInputRef.current?.click()} disabled={running} />
               </div>
             </div>
           ) : (
@@ -421,17 +411,7 @@ export default function RunPage() {
                 <span className="mr-2">⤓</span>把简历 PDF 拖进来，或点这里打开文件浏览器 —— 上传一次，之后不用再传
               </p>
               <div className="mt-3 flex items-center gap-3 flex-wrap">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                  disabled={running}
-                  className="btn-outline text-xs"
-                >
-                  选择文件…
-                </button>
+                <PickFileButton onPick={() => fileInputRef.current?.click()} disabled={running} />
               </div>
               <p className="mt-2 text-xs font-mono text-[var(--muted-fg)] italic">
                 没设置简历时点「开始」会直接报错。
@@ -554,6 +534,24 @@ export default function RunPage() {
         </Panel>
       </section>
     </div>
+  );
+}
+
+// 简历上传的「选择文件…」按钮——有/无简历两个分支共用，避免两处改一处漏。
+// stopPropagation 是因为它常嵌在可点击的虚线框里，别冒泡再触发一次 picker。
+function PickFileButton({ onPick, disabled }: { onPick: () => void; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick();
+      }}
+      disabled={disabled}
+      className="btn-outline text-xs"
+    >
+      选择文件…
+    </button>
   );
 }
 

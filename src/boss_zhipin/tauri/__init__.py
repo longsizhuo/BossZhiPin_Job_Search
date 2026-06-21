@@ -407,20 +407,14 @@ async def open_issues_page() -> dict[str, str]:
 
 @commands.command()
 async def get_log_dir() -> dict[str, str]:
-    """返回日志落点的绝对路径，让用户知道去哪手动捞日志附到反馈里。
+    """返回日志目录的绝对路径，让用户知道去哪手动捞日志附到反馈里。
 
     项目没有持久 app.log（运行日志走 GUI 实时面板）；落盘的是 audit 的
-    ``letters.jsonl`` 和 telemetry 的 ``llm_calls.jsonl``，都在 ``logs/`` 下。
+    ``letters.jsonl`` 和 telemetry 的 ``llm_calls.jsonl``，都在这个目录下。
     """
     from boss_zhipin.audit import LOG_PATH
-    from boss_zhipin.audit.telemetry import TELEMETRY_PATH
 
-    log_dir = LOG_PATH.parent.resolve()
-    return {
-        "dir": str(log_dir),
-        "letters": str(LOG_PATH.resolve()),
-        "telemetry": str(TELEMETRY_PATH.resolve()),
-    }
+    return {"dir": str(LOG_PATH.parent.resolve())}
 
 
 def main() -> int:
