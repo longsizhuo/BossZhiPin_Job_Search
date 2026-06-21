@@ -49,32 +49,29 @@ feed。如果你想筛某个具体岗位，去 BOSS 网站手动点一次那个 
 数会**自动把 `真诚的，{usr_name}` 这个固定签名再 strip 一次**。这是为了 BOSS
 那边自动补签名时不出现重复。
 
-### 我的 OpenAI 用的是 Azure / 代理网关 / 国内中转
-`.env` 里设 `OPENAI_BASE_URL=https://your-gateway.com/v1` 即可。脚本启动会打印
-"OpenAI base_url 覆盖：..." 让你确认。
+### 我用的是 Azure / 代理网关 / 国内中转
+`.env` 里把 `LLM_BASE_URL` 指到你的网关即可，比如
+`LLM_BASE_URL=https://your-gateway.com/v1`。代码只认这一个 base_url，不分牌子。
 
-### 用 `gpt-4o-mini` 而不是 `gpt-4o`？
+### 想换模型（比如 `gpt-4o-mini` 而不是 `gpt-4o`）？
+
+直接改 `.env` 里的 `LLM_MODEL`：
 
 ```bash
-echo 'CHATGPT_MODEL=gpt-4o-mini' >> .env
+echo 'LLM_MODEL=gpt-4o-mini' >> .env
 ```
 
 ## 代码 / 开发
 
-### 我想加新的 provider（比如 Kimi）
-1. 编辑 [`src/boss_zhipin/models/llm.py`](../../src/boss_zhipin/models/llm.py)，在 `PROVIDERS` 字典加一行：
-   ```python
-   "kimi": {
-       "base_url": "https://api.moonshot.cn/v1",
-       "api_key_env": "KIMI_API_KEY",
-       "default_model": "moonshot-v1-8k",
-   },
-   ```
-2. 同步改 `src/boss_zhipin/cli.py` 的 `PROVIDER_ENV_KEYS` 和 `PROVIDER_SIGNUP`
-3. 改 `.env.example` 加注释和申请链接
-4. 写一个测试用例确认 `pick_provider` 能识别它
-5. 改 [`src/boss_zhipin/audit/telemetry.py`](../../src/boss_zhipin/audit/telemetry.py) 的 `PRICING_CNY_PER_M_TOKENS`
-   加上 Kimi 的价格表
+### 我想用一个新端点（比如 Kimi）
+**任意 OpenAI 兼容端点本来就能直接跑**——不需要改代码，`.env` 里把
+`LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` 三个填成对应值即可（Kimi 是
+`LLM_BASE_URL=https://api.moonshot.cn/v1` + `LLM_MODEL=moonshot-v1-8k`）。
+
+如果你想让它出现在 **GUI 的「常用快捷」下拉**里（只是便利，不是支持范围的限制）：
+
+1. 编辑 [`src/boss_zhipin/providers.py`](../../src/boss_zhipin/providers.py)，在 `LLM_PRESETS` 字典加一行（key、label、base_url、model、signup_url）。
+2. 改 [`src/boss_zhipin/audit/telemetry.py`](../../src/boss_zhipin/audit/telemetry.py) 的 `PRICING_CNY_PER_M_TOKENS` 加上对应模型的价格表（想要成本统计准的话）。
 
 ### 测试时怎么 mock LLM 调用？
 不要 mock。`generate_letter` 已经隔离得很薄了，单测只测 `_build_client` 这种

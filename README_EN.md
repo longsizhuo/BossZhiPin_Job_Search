@@ -6,7 +6,7 @@
 
 [中文](README.md) · [English](README_EN.md)
 
-Reads job descriptions from BOSS Zhipin, asks an LLM to write a polite cover-letter greeting, validates it, then sends it to the recruiter. DeepSeek / OpenAI / Claude all supported — any single key gets you running.
+Reads job descriptions from BOSS Zhipin, asks an LLM to write a polite cover-letter greeting, validates it, then sends it to the recruiter. Works with **any OpenAI-compatible endpoint** (DeepSeek / OpenAI / Claude / Qwen·Bailian / Zhipu GLM / Doubao / Kimi / local Ollama …) — set `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` and you're running.
 
 > The original author paused maintenance; a small group of us keeps it going. We've migrated to [uv](https://docs.astral.sh/uv/), dropped the langchain stack, and replaced Selenium with [nodriver](https://github.com/ultrafunkamsterdam/nodriver) (much steadier against BOSS's anti-bot).
 
@@ -68,9 +68,9 @@ The repo ships a fully-commented template at [`.env.example`](.env.example). Hig
 
 | Field | Purpose | Required |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | DeepSeek key ([signup](https://platform.deepseek.com/api_keys)) | pick one |
-| `OPENAI_API_KEY` | OpenAI key, used by the Assistants flow ([signup](https://platform.openai.com/api-keys)) | pick one |
-| `ANTHROPIC_API_KEY` | Anthropic Claude key ([signup](https://console.anthropic.com/settings/keys)) | pick one |
+| `LLM_API_KEY` | API key for the LLM endpoint (signup URLs in `.env.example`) | yes |
+| `LLM_BASE_URL` | Endpoint base_url; empty = OpenAI default (e.g. `https://api.deepseek.com`) | no — defaults to OpenAI endpoint |
+| `LLM_MODEL` | Model name (e.g. `deepseek-chat` / `gpt-4o` / `claude-sonnet-4-6`) | yes |
 | `BOSS_USR_NAME` | Your name; signed at the bottom of every letter | no — prompted at startup if unset |
 | `BOSS_LABEL` | Job category tag, e.g. `"Backend Engineer (Shanghai)"` | no — empty = BOSS's default recommended feed |
 | `RESUME_PATH` | Path to your PDF resume | no — defaults to `./resume/my_cover.pdf` |
@@ -81,17 +81,22 @@ The repo ships a fully-commented template at [`.env.example`](.env.example). Hig
 | `LETTER_MIN_LEN` / `LETTER_MAX_LEN` | Letter length bounds | no — default 30 / 800 |
 | `LETTER_LOG_PATH` | Audit log path | no — default `./logs/letters.jsonl` |
 
-**With exactly one provider key in `.env`, the script auto-selects it — no menu.** Multiple keys, you pick at startup. Zero keys, you get a list of signup URLs and an exit.
+One unified OpenAI-compatible endpoint — no per-provider branching. Missing `LLM_API_KEY` prints a list of signup URLs and exits; set it and you're off. The GUI config page has a preset dropdown that auto-fills `LLM_BASE_URL` + `LLM_MODEL`.
 
 ---
 
-## Picking a provider
+## Picking an endpoint
 
-| Provider | How letters are generated | Pro | Con |
-|---|---|---|---|
-| DeepSeek | RAG with local Chroma + sentence-transformers retrieval over your resume | Cheapest, quality is fine | Downloads a ~430MB embedding model on first run |
-| OpenAI | Assistants API + OpenAI-hosted Vector Stores | No local embedding model needed | Calls cost more than DeepSeek |
-| Claude | RAG (same as DeepSeek path) | Best-sounding tone | Model is expensive, but RAG keeps tokens low |
+The code is **brand-agnostic**: every OpenAI-compatible endpoint takes the same path — local Chroma + sentence-transformers retrieval over your resume (RAG), then the endpoint's `chat.completions` to write the greeting. So the choice is just cost / tone:
+
+| Endpoint | Pro | Con |
+|---|---|---|
+| DeepSeek | Cheapest, reachable from mainland China, quality is fine | — |
+| OpenAI | Mature ecosystem | Costs more than DeepSeek; needs a proxy in mainland China |
+| Claude | Best-sounding tone | Model is expensive, but RAG keeps tokens low |
+| Qwen·Bailian / Zhipu GLM / Doubao / Kimi / local Ollama … | Reachable in China / can run locally | Depends on the endpoint |
+
+A ~430MB embedding model (all-mpnet-base-v2) downloads on first run regardless of which endpoint you pick.
 
 ---
 
@@ -133,7 +138,7 @@ Used to be a `tab.select(timeout=0)` block. Fixed. If you still see it, paste co
 Drop your PDF at `./resume/my_cover.pdf`, or set `RESUME_PATH` in `.env`.
 
 ### "❌ No API key found"
-Pick one of the three providers, sign up, paste the key into `.env`. Any one will work.
+Pick any OpenAI-compatible endpoint, sign up, and paste the key into `LLM_API_KEY` in `.env` (set `LLM_BASE_URL` + `LLM_MODEL` too).
 
 ---
 
@@ -141,16 +146,18 @@ Pick one of the three providers, sign up, paste the key into `.env`. Any one wil
 
 ```
 .
-├── main.py                       # Entry point: env validation, provider routing
-├── models/
-│   ├── llm.py                    # Provider config + chat-completions call for DeepSeek/Claude
-│   ├── openai_assistant.py       # OpenAI Assistants flow (with Vector Store)
-│   └── prompts.py                # Cover-letter prompt template
-├── website_oper/
-│   ├── finding_jobs.py           # Browser automation (nodriver), sync facade over async impls
-│   └── write_response.py         # Per-job loop: JD → generate → validate → send/log
-├── vectorization.py              # PDF parse + sentence-transformers embed + Chroma persistence
-├── audit.py                      # Letter validation + JSONL audit log
+├── main.py                       # Compat shim: still works, delegates to boss_zhipin.cli
+├── src/boss_zhipin/              # Installable package (src/ layout)
+│   ├── cli.py                    # CLI entry: interaction + env validation (ensure_llm_configured)
+│   ├── providers.py              # Light metadata: LLM_PRESETS (handy presets) + is_llm_configured
+│   ├── models/
+│   │   ├── llm.py                # Generic OpenAI-compatible endpoint client + RAG letter generation
+│   │   └── prompts.py            # Cover-letter prompt template
+│   ├── website_oper/
+│   │   ├── finding_jobs.py       # Browser automation (nodriver), sync facade over async impls
+│   │   └── write_response.py     # Per-job loop: JD → generate → validate → send/log
+│   ├── vectorization.py          # PDF parse + sentence-transformers embed + Chroma persistence
+│   └── audit/                    # Letter validation + JSONL audit log + LLM telemetry
 └── .env.example                  # Fully-commented environment template
 ```
 

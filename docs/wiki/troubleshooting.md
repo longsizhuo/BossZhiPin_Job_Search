@@ -4,21 +4,22 @@
 
 ## 1. ❌ 没找到任何 API key
 
-**症状**：
+**症状**（`LLM_API_KEY` 没设时 CLI 会列出各家「常用快捷」端点的申请地址然后退出）：
 
 ```
-❌ 没在环境里找到任何 LLM provider 的 API key。
-   去这些地方申请一个填进 .env（仓库里有 .env.example 可以参考）：
-     • DEEPSEEK_API_KEY       https://platform.deepseek.com/api_keys
-     • OPENAI_API_KEY         https://platform.openai.com/api-keys
-     • ANTHROPIC_API_KEY      https://console.anthropic.com/settings/keys
+❌ 没设置 LLM_API_KEY。
+   选一家申请 key，填进 .env 的 LLM_API_KEY（.env.example 有样板）：
+     • DeepSeek           https://platform.deepseek.com/api_keys
+       LLM_BASE_URL=https://api.deepseek.com  LLM_MODEL=deepseek-chat
+     • OpenAI             https://platform.openai.com/api-keys
+       ...
 ```
 
 **修复**：
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少填一个 *_API_KEY
+# 编辑 .env，至少填 LLM_API_KEY（base_url/model 可用预设默认值）
 ```
 
 ## 2. ❌ 找不到简历文件
@@ -172,22 +173,22 @@ tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, validation_reasons, l
 - 招呼语经常超长 → 让 prompt 要求"不超过 200 字"
 - 老有英文 → prompt 里加"必须全中文"
 
-## 8. Run 进入失败终态（OpenAI Assistants）
+## 8. LLM 调用报错 / 招呼语没生成
 
-**症状**：
+**症状**：日志里看到端点返回的报错（如 `model not found` / 鉴权失败 / 限流），
+招呼语没生成出来。
 
-```
-[chat] OpenAI run 进入失败终态：failed
-```
+**原因**：`LLM_*` 三个变量没对齐。最常见是 `LLM_MODEL` 填了一个该端点不存在的
+模型名，或者 `LLM_BASE_URL` 跟 key 不是同一家。
 
-**原因**：Assistants API 那边的 run 没成功完成。可能是 model 限流 / 内容触发了
-content policy / token 上限超出。
-
-**修复**：去 OpenAI dashboard 看具体 run 详情。最常见是 model 用错了（比如把
-`gpt-4o-turbo` 填进了 `CHATGPT_MODEL`，那个不是真模型名）。
+**修复**：核对 `.env` 里的三件套——`LLM_BASE_URL` + `LLM_MODEL` + `LLM_API_KEY`
+必须是同一家端点的。各家正确值参考 `.env.example` 里的注释，或在 GUI 配置页用
+「常用快捷」下拉自动填 base_url + model，只手动粘 key。
 
 ```bash
-echo 'CHATGPT_MODEL=gpt-4o' >> .env
+# 例：换成 DeepSeek
+echo 'LLM_BASE_URL=https://api.deepseek.com' >> .env
+echo 'LLM_MODEL=deepseek-chat' >> .env
 ```
 
 ## 9. 想用日常 Chrome 而不是独立 profile
@@ -267,7 +268,6 @@ print(json.dumps(telemetry_summary(since_records=1000), ensure_ascii=False, inde
 rm -rf chrome_profile/   # 删 profile（cookie 一起没）
 rm -rf vectorstores/     # 删向量库（下次跑会重新 embed）
 rm -rf logs/             # 删历史 audit
-rm -f assistant.json     # 删 OpenAI Assistant ID 缓存
 ```
 
 然后重跑 `DRY_RUN=1 uv run main.py`。
