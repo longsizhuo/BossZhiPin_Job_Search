@@ -42,13 +42,13 @@
 .
 ├── main.py                       # 兼容 shim，委托 boss_zhipin.cli（uv run main.py 仍可用）
 ├── src/boss_zhipin/              # 业务代码都在这个可安装 package 里（src/ 布局）
-│   ├── cli.py                    # CLI 入口，env 校验 + provider 路由（run_provider 是 CLI/GUI 共用的主循环入口）
+│   ├── cli.py                    # CLI 入口，env 校验（run_provider 是 CLI/GUI 共用的主循环入口）
+│   ├── providers.py              # 轻量元数据：LLM_PRESETS（常用端点快捷）+ is_llm_configured
 │   ├── audit/
 │   │   ├── __init__.py           # validate_letter / log_attempt（招呼语审核）
 │   │   └── telemetry.py          # LLM 调用 telemetry（成本/时长/token 落盘）
 │   ├── models/
-│   │   ├── llm.py                # provider 配置 + DeepSeek/Claude RAG 调用
-│   │   ├── openai_assistant.py   # OpenAI Assistants 模式
+│   │   ├── llm.py                # 通用 OpenAI 兼容端点 client + RAG 招呼语生成
 │   │   └── prompts.py            # 招呼语 prompt 模板
 │   ├── utils/
 │   │   └── retry.py              # 指数退避重试装饰器
@@ -72,10 +72,14 @@
 - `nodriver` 由 uc 原作者维护，CDP 直连，无 chromedriver 中间层
 - 详见 [`docs/wiki/adr/001-nodriver-over-selenium.md`](docs/wiki/adr/001-nodriver-over-selenium.md)
 
-### 三家 provider 共用 OpenAI SDK
-- DeepSeek 和 Anthropic 都提供 OpenAI 兼容端点，所以代码里只 import `openai`
-- 切换 provider 就是切换 `base_url` + API key
-- 详见 [`docs/wiki/adr/002-three-providers.md`](docs/wiki/adr/002-three-providers.md)
+### 通用 OpenAI 兼容端点（不分 provider）
+- 只 import `openai`，统一一个端点 = `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL`
+- DeepSeek / OpenAI / Claude / 百炼·通义千问 / 智谱GLM / 豆包 / Kimi / 本地 Ollama /
+  任意中转都走同一条路，代码**不认牌子**。GUI 用 `providers.LLM_PRESETS` 做"常用快捷"
+  自动填 base_url + model，但那只是便利，不是支持范围的限制
+- `llm._build_client()` 无参，call-time 读 `LLM_*`；`generate_letter` 不再收 provider 名
+- 2026-06 重构：移除了具名 provider 路由 + OpenAI Assistants 分支（`openai_assistant.py`
+  已删），详见 [`docs/wiki/adr/002-three-providers.md`](docs/wiki/adr/002-three-providers.md) 顶部更新
 
 ### sync facade + async impl
 - `finding_jobs.py` 对外是同步 API（`open_browser_with_options` / `log_in` /

@@ -1,10 +1,10 @@
 """CLI 入口。
 
 启动流程：
-1. 读 ``.env``，根据有哪些 provider key 自动选用（一个直接用，多个让用户选）。
+1. 读 ``.env``，校验 ``LLM_API_KEY`` 配好了没（端点 / model 由 ``LLM_*`` 决定）。
 2. 兜底 ``BOSS_USR_NAME`` / ``BOSS_LABEL`` / ``RESUME_PATH`` 三个可选配置：
    不设就 prompt 用户输入或用默认值。
-3. 按 provider 走 deepseek / chatgpt / claude 三条分支之一，进入主循环。
+3. 进入主循环——统一走一个 OpenAI 兼容端点，不再分 provider 分支。
 
 跑法：``uv run main.py`` / ``uv run python -m boss_zhipin`` / ``boss-zhipin``（pyproject script）
 三种等价。
@@ -27,17 +27,14 @@ from pathlib import Path
 
 import nodriver as uc
 from dotenv import load_dotenv
-from openai import OpenAI
 
 from boss_zhipin.models.job_matcher import extract_keywords_from_text, extract_resume_text
-from boss_zhipin.models.openai_assistant import create_assistant
-# PROVIDER_ENV_KEYS / PROVIDER_SIGNUP / detect_providers 抽到 boss_zhipin.providers
-# 让 PyTauri 的 detect_providers 命令不被 cli.py 的重 import 链拖累
+# LLM_PRESETS / is_llm_configured 住在轻量的 boss_zhipin.providers，
+# 让 PyTauri 的 Config 命令不被 cli.py 的重 import 链拖累
 # （cli 的 vectorization import 会触发 sentence_transformers → torch，3-10s）。
 from boss_zhipin.providers import (
-    PROVIDER_ENV_KEYS,
-    PROVIDER_SIGNUP,
-    detect_providers,
+    LLM_PRESETS,
+    is_llm_configured,
 )
 from boss_zhipin.vectorization import embed_resume
 from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat
@@ -51,38 +48,31 @@ RECOMMEND_URL = "https://www.zhipin.com/web/geek/job-recommend?ka=header-job-rec
 DEFAULT_RESUME_PATH = "resume/my_cover.pdf"
 
 __all__ = [
-    "PROVIDER_ENV_KEYS",
-    "PROVIDER_SIGNUP",
-    "detect_providers",
+    "LLM_PRESETS",
+    "is_llm_configured",
     "RECOMMEND_URL",
     "DEFAULT_RESUME_PATH",
-    "pick_provider",
+    "ensure_llm_configured",
     "ensure_usr_name",
     "ensure_resume_path",
     "run_provider",
 ]
 
 
-def pick_provider() -> str:
-    available = detect_providers()
-    if not available:
-        print("❌ 没在环境里找到任何 LLM provider 的 API key。")
-        print("   去这些地方申请一个填进 .env（仓库里有 .env.example 可以参考）：")
-        for name, url in PROVIDER_SIGNUP.items():
-            print(f"     • {PROVIDER_ENV_KEYS[name]:<22} {url}")
-        sys.exit(1)
-    if len(available) == 1:
-        provider = available[0]
-        print(f"✅ 检测到只配了 {PROVIDER_ENV_KEYS[provider]}，自动选用：{provider}")
-        return provider
-    print(f"检测到 {len(available)} 个 provider 都配了 key，请选一个：")
-    for i, name in enumerate(available, 1):
-        print(f"  {i}. {name:<10} ({PROVIDER_ENV_KEYS[name]})")
-    while True:
-        choice = input(f"输入序号 (1-{len(available)}): ").strip()
-        if choice.isdigit() and 1 <= int(choice) <= len(available):
-            return available[int(choice) - 1]
-        print("无效输入，再试一次")
+def ensure_llm_configured() -> None:
+    """没填 LLM_API_KEY 就打印各家申请地址并退出。
+
+    端点 / model 统一由 ``LLM_*`` 决定（GUI 选预设会自动填），CLI 这里只兜底
+    检查 key 在不在；真正构造 client 在 ``llm._build_client``（会校验 LLM_MODEL）。
+    """
+    if is_llm_configured():
+        return
+    print("❌ 没设置 LLM_API_KEY。")
+    print("   选一家申请 key，填进 .env 的 LLM_API_KEY（.env.example 有样板）：")
+    for preset in LLM_PRESETS.values():
+        print(f"     • {preset['label']:<18} {preset['signup_url']}")
+        print(f"       LLM_BASE_URL={preset['base_url']}  LLM_MODEL={preset['model']}")
+    sys.exit(1)
 
 
 def ensure_usr_name() -> str:
@@ -111,24 +101,20 @@ def get_label() -> str:
 
 
 async def run_provider(
-    provider: str,
     usr_name: str,
     label: str,
     dry_run: bool,
     resume_path: str,
 ) -> None:
-    """简历预处理 + provider 路由 + 主循环，CLI 和 GUI 共用的唯一入口。
+    """简历预处理 + 主循环，CLI 和 GUI 共用的唯一入口。
 
-    路由规则（改这里就同时影响 CLI 和桌面 App，不会分叉）：
-    - ``chatgpt`` 走 OpenAI Assistants API（client + assistant_id）
-    - ``deepseek`` / ``claude`` 走 RAG（chroma vectorstore）
+    用哪个 LLM 端点 / model 由 ``LLM_*`` 环境变量决定（见 ``llm._build_client``），
+    不再按 provider 分支——三家都是 OpenAI 兼容端点，走同一条 RAG + chat
+    completions 通路。
 
     必须在同一个事件循环里 await（nodriver CDP 跨 run_until_complete 会半死，
     见 ``_cli_main`` 的注释）。
     """
-    if provider not in PROVIDER_ENV_KEYS:
-        raise ValueError(f"unknown provider: {provider!r}")
-
     # 从简历自动提取关键词和全文（用于职位匹配过滤）
     resume_text = extract_resume_text(resume_path)
     resume_keywords = extract_keywords_from_text(resume_text)
@@ -141,7 +127,7 @@ async def run_provider(
     exclude_str = os.getenv("BOSS_EXCLUDE_KEYWORDS", "")
     exclude_keywords = [k.strip() for k in exclude_str.split(",") if k.strip()] if exclude_str else None
 
-    common_kwargs = dict(
+    await send_job_descriptions_to_chat(
         usr_name=usr_name,
         url=RECOMMEND_URL,
         browser_type="chrome",
@@ -153,35 +139,6 @@ async def run_provider(
         exclude_keywords=exclude_keywords,
         vectorstore=vectorstore,
     )
-
-    if provider == "chatgpt":
-        chatgpt_model = os.getenv("CHATGPT_MODEL", "").strip() or "gpt-4o"
-        log.info("OpenAI 模型：%s（可用 CHATGPT_MODEL 环境变量覆盖）", chatgpt_model)
-        openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-        if openai_base_url:
-            log.info("OpenAI base_url 覆盖：%s", openai_base_url)
-        # call-time 重读，别用 openai_assistant 的 import-time 常量 OPENAI_API_KEY：
-        # GUI 配置页存完 key 后那个常量还是启动时的旧值（None），会导致刚配的
-        # key 不生效。其它 provider 走 llm._build_client 同样是 call-time os.getenv。
-        client_openai = OpenAI(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            base_url=openai_base_url or None,
-        )
-        assistant_id = create_assistant(
-            usr_name, chatgpt_model, client_openai, resume_path=resume_path
-        )
-        await send_job_descriptions_to_chat(
-            models="chatgpt",
-            client_openAI=client_openai,
-            assistant_id=assistant_id,
-            **common_kwargs,
-        )
-    else:
-        # deepseek / claude：除了 provider 名，调用完全一致
-        await send_job_descriptions_to_chat(
-            models=provider,
-            **common_kwargs,
-        )
 
 
 def _cli_main() -> None:
@@ -205,7 +162,7 @@ def _cli_main() -> None:
     if dry_run:
         print("⚠️  DRY_RUN=1 — 招呼语只会生成 + 写日志，不会真的发到 BOSS")
 
-    provider = pick_provider()
+    ensure_llm_configured()
     usr_name = ensure_usr_name()
     resume_path = ensure_resume_path()
     label = get_label()
@@ -218,7 +175,7 @@ def _cli_main() -> None:
     # CDP 会在 run_until_complete 之间进入半死态导致 evaluate hang）。
     # 这里用 ``uc.loop().run_until_complete(...)`` 一次性跑完。
     uc.loop().run_until_complete(
-        run_provider(provider, usr_name, label, dry_run, resume_path)
+        run_provider(usr_name, label, dry_run, resume_path)
     )
 
 

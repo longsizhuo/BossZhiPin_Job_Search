@@ -1,15 +1,16 @@
 """GUI 配置面板用——读/写 ``.env`` 表单字段。
 
 写 ``.env`` 的同时**也同步进程内的 ``os.environ``**——否则 GUI 里存完
-API key，``detect_providers`` / LLM ``_build_client`` 仍读的是进程启动时
-load_dotenv 进来的旧值（None），表现为"配置页存了 key，运行页还是 NO KEY、
-点开始没反应 / 跑起来报 DEEPSEEK_API_KEY is not set"，必须重启 App 才生效
-（2026-06-08 用户实测）。这些读 env 的地方全是 call-time ``os.getenv``，
-所以保存时一并更新 ``os.environ`` 就能即时生效，无需重启。
+API key，LLM ``_build_client`` 仍读的是进程启动时 load_dotenv 进来的旧值
+（None），表现为"配置页存了 key，运行页还是 NO KEY、点开始没反应 / 跑起来报
+LLM_API_KEY is not set"，必须重启 App 才生效（2026-06-08 用户实测）。这些读
+env 的地方全是 call-time ``os.getenv``，所以保存时一并更新 ``os.environ``
+就能即时生效，无需重启。
 
-唯一仍需重启才更新的是 ``models.openai_assistant`` 里 import-time 读进的
-``OPENAI_API_KEY`` 模块常量——但 ``cli.run_provider`` 的 chatgpt 分支已经
-改成 call-time 重读 env，所以实际也不受影响。
+**LLM 端点配置（LLM_BASE_URL / LLM_API_KEY / LLM_MODEL）不在 KNOWN_KEYS**：
+它们由 Config 顶部的端点选择器（``gui.llm_config``）统一管理（选预设 / 自定义
++ 填 key），不渲染成通用裸框。但 env key 本身仍要可写，所以下面的
+``_ALLOWED_KEYS`` 把它们并进来。
 
 API key 字段在前端 mask（password input），后端不主动 mask——前端拿到
 真实值后用户改的时候不至于看到 ``***``。
@@ -21,19 +22,21 @@ from pathlib import Path
 
 from dotenv import dotenv_values, set_key, unset_key
 
-# 暴露给前端的配置字段。每一项映射 ``.env`` 里一个 key。
-# 顺序决定前端表单顺序。
+from boss_zhipin.providers import (
+    LLM_API_KEY_ENV,
+    LLM_BASE_URL_ENV,
+    LLM_MODEL_ENV,
+)
+
+# 暴露给前端通用表单的字段。每一项映射 ``.env`` 里一个 key。
+# 顺序决定前端表单顺序。LLM 端点三件套（base_url/key/model）不在这里——
+# 由 Config 顶部的端点选择器（gui.llm_config）管，见 module docstring。
 KNOWN_KEYS: list[tuple[str, str, bool]] = [
     # (env key, 字段说明, is_secret)
-    ("DEEPSEEK_API_KEY", "DeepSeek API key", True),
-    ("OPENAI_API_KEY", "OpenAI API key", True),
-    ("ANTHROPIC_API_KEY", "Anthropic (Claude) API key", True),
     ("BOSS_USR_NAME", "你的名字（招呼语署名）", False),
     ("BOSS_LABEL", "求职 tag（空走 BOSS 推荐 feed）", False),
     # RESUME_PATH 不在此处：改由「运行」tab 拖拽上传管理（gui.resume_io），
     # 避免 Config 页一个裸路径输入框成为第二真相源。env 变量本身仍处处生效。
-    ("CHATGPT_MODEL", "OpenAI 模型（默认 gpt-4o）", False),
-    ("OPENAI_BASE_URL", "OpenAI 代理 URL（可选）", False),
     ("BOSS_CHROME_PROFILE", "Chrome profile 目录（默认 ./chrome_profile）", False),
     ("BOSS_MIN_MATCH_SCORE", "LLM 匹配分阈值（默认 50）", False),
     ("BOSS_EXCLUDE_KEYWORDS", "岗位黑名单（用逗号分隔，如：外包,驻场）", False),
@@ -45,7 +48,12 @@ def _env_path() -> Path:
     return Path(".env")
 
 
-_ALLOWED_KEYS: frozenset[str] = frozenset(k for k, _, _ in KNOWN_KEYS)
+# 写白名单 = 通用表单字段 ∪ LLM 端点三件套。后者不渲染成通用框，但要能写，
+# 所以并进来。其余任何 key 一律拒写（防注入）。
+_ALLOWED_KEYS: frozenset[str] = (
+    frozenset(k for k, _, _ in KNOWN_KEYS)
+    | {LLM_API_KEY_ENV, LLM_BASE_URL_ENV, LLM_MODEL_ENV}
+)
 
 
 def read_env() -> dict[str, str]:

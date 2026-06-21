@@ -22,9 +22,25 @@ export type ProgressEvent = {
 export type RunConfig = {
   usrName: string;
   label: string;
-  provider: string;
   dryRun: boolean;
   resumePath?: string;
+};
+
+// LLM 端点预设（自动填 base_url + model 的快捷项；不是支持范围的限制）。
+export type LlmPreset = {
+  name: string;
+  label: string;
+  baseUrl: string;
+  model: string;
+  signupUrl: string;
+};
+
+// 当前 LLM 端点配置 + 预设列表。hasKey 只说有没有配 key，不回传明文。
+export type LlmConfig = {
+  baseUrl: string;
+  model: string;
+  hasKey: boolean;
+  presets: LlmPreset[];
 };
 
 export type EnvField = {
@@ -67,8 +83,11 @@ export type TelemetrySummary = {
 // ---------- wrappers ----------
 
 export const ipc = {
-  detectProviders: () => pyInvoke<{ providers: string[] }>("detect_providers", {}),
   isRunning: () => pyInvoke<{ running: boolean }>("is_running", {}),
+  // LLM 端点：选预设/自定义 + base_url + model + key。apiKey 留空 = 不动已存 key。
+  getLlmConfig: () => pyInvoke<LlmConfig>("get_llm_config", {}),
+  setLlmConfig: (baseUrl: string, model: string, apiKey: string) =>
+    pyInvoke<{ status: string }>("set_llm_config", { baseUrl, model, apiKey }),
   startRun: (config: RunConfig, progressChannel: unknown, logChannel: unknown) =>
     pyInvoke<{ status: string }>("start_run", { config, progressChannel, logChannel }),
   stopRun: () => pyInvoke<{ status: string }>("stop_run", {}),

@@ -51,7 +51,7 @@ def telemetry_spy(monkeypatch):
 def fake_client(monkeypatch):
     """绕开 _build_client 的真实 env 检查。"""
     monkeypatch.setattr(
-        job_matcher, "_build_client", lambda provider: (object(), "deepseek-chat")
+        job_matcher, "_build_client", lambda: (object(), "deepseek-chat")
     )
 
 
