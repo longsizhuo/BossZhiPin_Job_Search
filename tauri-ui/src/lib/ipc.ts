@@ -84,4 +84,18 @@ export const ipc = {
     pyInvoke<{ letters: LetterRecord[] }>("get_letters", { limit }),
   getTelemetrySummary: () =>
     pyInvoke<{ summary: TelemetrySummary }>("get_telemetry_summary", {}),
+  // 检查更新：查 GitHub 最新 release。后端永不抛错，没网时 hasUpdate=false。
+  checkForUpdate: () =>
+    pyInvoke<UpdateInfo>("check_for_update", {}),
+  // 用系统浏览器打开下载页（后端做了 URL 白名单校验）。
+  openReleasePage: (url: string) =>
+    pyInvoke<{ status: string }>("open_release_page", { url }),
+};
+
+// 检查更新返回：当前版本 / 最新版本 / 下载页 URL / 是否有新版。
+export type UpdateInfo = {
+  current: string;
+  latest: string;
+  url: string;
+  hasUpdate: boolean;
 };

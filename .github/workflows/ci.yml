@@ -63,6 +63,7 @@ jobs:
           uv run python -c "from boss_zhipin.gui.env_io import read_env, write_env, field_meta, KNOWN_KEYS"
           uv run python -c "from boss_zhipin.gui.resume_io import store_resume, current_resume, DEFAULT_RESUME_PATH"
           uv run python -c "from boss_zhipin.gui.history import read_letters"
+          uv run python -c "from boss_zhipin.gui.updates import check_latest_release, is_newer, current_version, REPO"
 
       - name: 跑 pytest
         run: uv run pytest tests/ -v --tb=short
