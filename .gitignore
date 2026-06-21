@@ -76,3 +76,5 @@
 /src-tauri/icons/android/
 /src-tauri/icons/ios/
 
+# macos 特有的文件
+.DS_Store
