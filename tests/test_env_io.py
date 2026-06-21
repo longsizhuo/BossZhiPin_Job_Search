@@ -1,8 +1,9 @@
 """env_io 的读/写 + os.environ 同步行为。
 
 重点回归：GUI 配置页存 key 后必须**即时**反映到 ``os.environ``，否则
-``detect_providers`` / ``llm._build_client`` 读到的还是启动时的旧值，
-表现为"配置页存了 key，运行页还是 NO KEY、点开始没反应"（2026-06-08 实测）。
+``llm._build_client`` 读到的还是启动时的旧值，表现为"配置页存了 key，运行页
+还是 NO KEY、点开始没反应"（2026-06-08 实测）。LLM 端点 key 现在叫
+``LLM_API_KEY``（重构后统一一个 OpenAI 兼容端点）。
 """
 import os
 
@@ -20,32 +21,31 @@ def in_tmp_cwd(tmp_path, monkeypatch):
 
 class TestWriteEnvSyncsEnviron:
     def test_write_sets_os_environ(self, in_tmp_cwd, monkeypatch):
-        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-        env_io.write_env({"DEEPSEEK_API_KEY": "sk-test"})
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        env_io.write_env({"LLM_API_KEY": "sk-test"})
         # 既落盘
-        assert "DEEPSEEK_API_KEY=sk-test" in (in_tmp_cwd / ".env").read_text()
+        assert "LLM_API_KEY=sk-test" in (in_tmp_cwd / ".env").read_text()
         # 也即时进 os.environ
-        assert os.getenv("DEEPSEEK_API_KEY") == "sk-test"
+        assert os.getenv("LLM_API_KEY") == "sk-test"
 
-    def test_detect_providers_sees_new_key_without_restart(self, in_tmp_cwd, monkeypatch):
-        from boss_zhipin.providers import detect_providers
+    def test_is_configured_sees_new_key_without_restart(self, in_tmp_cwd, monkeypatch):
+        from boss_zhipin.providers import is_llm_configured
 
-        for env in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
-            monkeypatch.delenv(env, raising=False)
-        assert detect_providers() == []
-        env_io.write_env({"DEEPSEEK_API_KEY": "sk-test"})
-        assert detect_providers() == ["deepseek"]
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        assert is_llm_configured() is False
+        env_io.write_env({"LLM_API_KEY": "sk-test"})
+        assert is_llm_configured() is True
 
     def test_empty_value_pops_os_environ(self, in_tmp_cwd, monkeypatch):
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-old")
-        env_io.write_env({"DEEPSEEK_API_KEY": ""})
-        assert os.getenv("DEEPSEEK_API_KEY") is None
+        monkeypatch.setenv("LLM_API_KEY", "sk-old")
+        env_io.write_env({"LLM_API_KEY": ""})
+        assert os.getenv("LLM_API_KEY") is None
 
     def test_empty_value_pop_is_idempotent(self, in_tmp_cwd, monkeypatch):
         # 本来就没设——清空不能炸
-        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-        env_io.write_env({"DEEPSEEK_API_KEY": ""})
-        assert os.getenv("DEEPSEEK_API_KEY") is None
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        env_io.write_env({"LLM_API_KEY": ""})
+        assert os.getenv("LLM_API_KEY") is None
 
     def test_unknown_key_does_not_touch_environ(self, in_tmp_cwd, monkeypatch):
         monkeypatch.delenv("NOT_A_KNOWN_KEY", raising=False)

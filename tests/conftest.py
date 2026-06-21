@@ -18,11 +18,13 @@ import os
 # telemetry 路径 / letter 长度边界 / log 路径）都清掉，用例需要时各自再
 # ``monkeypatch.setenv`` 上去。
 _PROJECT_ENV_VARS = (
-    # provider 凭据
+    # LLM 端点凭据（重构后统一一个 OpenAI 兼容端点）
+    "LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL",
+    # 老 provider 凭据（已弃用，仍清掉避免本机残留污染）
     "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
     # 用户输入兜底
     "BOSS_USR_NAME", "BOSS_LABEL", "RESUME_PATH",
-    # OpenAI / 模型选项
+    # 老 OpenAI / 模型选项（已弃用）
     "OPENAI_BASE_URL", "CHATGPT_MODEL",
     # retry 装饰器在 import time 读这些，本机有 export 会影响装饰器默认值
     "BOSS_RETRY_BASE_DELAY", "BOSS_RETRY_MAX_DELAY", "BOSS_RETRY_MAX_ATTEMPTS",

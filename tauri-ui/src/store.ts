@@ -15,15 +15,14 @@ type RunState = {
   // Form states preserved across tabs
   formUsrName: string;
   formLabel: string;
-  formProvider: string;
   formDryRun: boolean;
 
   setRunning: (running: boolean) => void;
   pushEvent: (ev: ProgressEvent) => void;
   pushLog: (line: string) => void;
   clear: () => void;
-  
-  setFormState: (state: Partial<Pick<RunState, "formUsrName" | "formLabel" | "formProvider" | "formDryRun">>) => void;
+
+  setFormState: (state: Partial<Pick<RunState, "formUsrName" | "formLabel" | "formDryRun">>) => void;
 };
 
 export const useRunStore = create<RunState>((set) => ({
@@ -34,7 +33,6 @@ export const useRunStore = create<RunState>((set) => ({
 
   formUsrName: "",
   formLabel: "",
-  formProvider: "",
   formDryRun: true,
 
   setRunning: (running) => set({ running }),

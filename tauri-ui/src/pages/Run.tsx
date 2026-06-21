@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo } from "../lib/ipc";
+import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo, type LlmConfig } from "../lib/ipc";
 import { useRunStore } from "../store";
 
 // 运行页：editorial 三段式布局
@@ -10,8 +10,9 @@ import { useRunStore } from "../store";
 // 3) 控制按钮行（黑底白字反色）
 // 4) 双面板：进度事件 + 日志（日志保留黑底白字，刚好契合 monochrome）
 export default function RunPage() {
-  const [providers, setProviders] = useState<string[]>([]);
-  const [providersError, setProvidersError] = useState<string | null>(null);
+  // AI 端点在「配置」tab 设；运行页只读展示 + 校验是否配好了 key。
+  const [llmCfg, setLlmCfg] = useState<LlmConfig | null>(null);
+  const [llmError, setLlmError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // 简历（拖拽上传）
@@ -23,7 +24,6 @@ export default function RunPage() {
   // Global form states
   const usrName = useRunStore((s) => s.formUsrName);
   const label = useRunStore((s) => s.formLabel);
-  const provider = useRunStore((s) => s.formProvider);
   const dryRun = useRunStore((s) => s.formDryRun);
   const setFormState = useRunStore((s) => s.setFormState);
 
@@ -40,14 +40,9 @@ export default function RunPage() {
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    ipc.detectProviders()
-      .then(({ providers }) => {
-        setProviders(providers);
-        if (providers.length > 0 && !useRunStore.getState().formProvider) {
-          setFormState({ formProvider: providers[0] });
-        }
-      })
-      .catch((e) => setProvidersError(String(e)));
+    ipc.getLlmConfig()
+      .then((cfg) => setLlmCfg(cfg))
+      .catch((e) => setLlmError(String(e)));
 
     ipc.getEnvFields().then(({ fields }) => {
       const stateUpdate: Record<string, any> = {};
@@ -131,8 +126,8 @@ export default function RunPage() {
       alert("请填用户名");
       return;
     }
-    if (!provider) {
-      alert("没有可用的 provider，先去配置 tab 填 API key");
+    if (!llmCfg || !llmCfg.hasKey) {
+      alert("还没配 AI —— 去「配置」tab 选端点并填 API key");
       return;
     }
     setBusy(true);
@@ -145,7 +140,6 @@ export default function RunPage() {
     const config: RunConfig = {
       usrName: usrName.trim(),
       label: label.trim(),
-      provider,
       dryRun,
     };
 
@@ -239,30 +233,25 @@ export default function RunPage() {
             />
           </Field>
 
-          <Field label="LLM Provider">
-            {providersError ? (
+          <Field label="AI 端点" hint="在「配置」tab 设">
+            {llmError ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
                 <span className="badge-outline mr-2">ERROR</span>
-                检测失败：{providersError}
+                读取失败：{llmError}
               </div>
-            ) : providers.length === 0 ? (
+            ) : !llmCfg || !llmCfg.hasKey ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
                 <span className="badge-invert mr-2">No Key</span>
-                去「配置」tab 填一个 API key
+                去「配置」tab 选端点并填 API key
               </div>
             ) : (
-              <select
-                value={provider}
-                onChange={(e) => setFormState({ formProvider: e.target.value })}
-                disabled={running}
-                className="field-input"
-              >
-                {providers.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+              // 只读展示：端点 + model 在配置页设，这里不再有下拉
+              <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)] flex items-center gap-2 flex-wrap">
+                <span className="badge-invert">{llmCfg.model || "（未填 model）"}</span>
+                <span className="text-[var(--muted-fg)] text-xs break-all">
+                  {llmCfg.baseUrl || "OpenAI 默认端点"}
+                </span>
+              </div>
             )}
           </Field>
 

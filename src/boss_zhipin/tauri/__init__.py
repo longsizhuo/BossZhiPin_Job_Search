@@ -70,7 +70,6 @@ class RunConfig(_CamelModel):
     """
     usr_name: str
     label: str = ""
-    provider: str  # "deepseek" / "chatgpt" / "claude"
     dry_run: bool = False
     resume_path: str = ""  # 空 → 用 RESUME_PATH env / 默认值
 
@@ -79,23 +78,6 @@ class StartRunBody(_CamelModel):
     config: RunConfig
     progress_channel: JavaScriptChannelId[ProgressEvent]
     log_channel: JavaScriptChannelId[str]
-
-
-@commands.command()
-async def detect_providers() -> dict[str, list[str]]:
-    """前端用来填 provider 下拉——返回当前 env 里配了哪些 API key。
-
-    **不能 import boss_zhipin.cli**：cli top-level 会拉起 vectorization →
-    sentence_transformers → torch，import 一次 3-10 秒。这个命令在 app 启动
-    时就被 Run 页的 useEffect 触发，会阻塞 portal 的 asyncio loop，导致用户
-    切到 Config 页时 ``get_env_fields`` IPC 一直排队 → 看上去"Config 一直
-    loading"。
-
-    所以从 ``boss_zhipin.providers``（轻模块，只依赖 os）走。
-    """
-    from boss_zhipin.providers import detect_providers as _detect_providers  # noqa: WPS433
-
-    return {"providers": _detect_providers()}
 
 
 @commands.command()
@@ -132,10 +114,9 @@ def _build_main_loop_factory(config: RunConfig):
 
         resume_path = environ.get("RESUME_PATH", "").strip() or DEFAULT_RESUME_PATH
 
-        # 简历预处理 + provider 路由全部走 cli.run_provider——CLI 和 GUI
-        # 共用一份逻辑，避免行为分叉。unknown provider 由它抛 ValueError。
+        # 简历预处理 + 主循环全部走 cli.run_provider——CLI 和 GUI 共用一份逻辑。
+        # 用哪个 LLM 端点由 LLM_* env 决定（Config 页已存进 .env + os.environ）。
         await run_provider(
-            provider=config.provider,
             usr_name=config.usr_name,
             label=config.label,
             dry_run=config.dry_run,
@@ -177,6 +158,15 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
     if current_resume() is None:
         raise ValueError(
             "找不到简历 PDF —— 在「运行」页把简历 PDF 拖进来（或在 .env 设 RESUME_PATH）"
+        )
+
+    # LLM 端点前置校验：没配 key 跑起来会在 _build_client 深处抛 RuntimeError，
+    # 这里读 .env 文件提前拦，前端秒级可见。
+    from boss_zhipin.gui.llm_config import read_llm_config
+
+    if not read_llm_config()["hasKey"]:
+        raise ValueError(
+            "还没配 AI —— 去「配置」tab 选个服务商（或自定义端点）并填 API key"
         )
 
     progress_channel = body.progress_channel.channel_on(webview_window.as_ref_webview())
@@ -227,7 +217,35 @@ async def shutdown_browser() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# ---------- Config 面板 ----------
+# ---------- Config 面板：AI 端点（base_url + key + model） ----------
+
+
+@commands.command()
+async def get_llm_config() -> dict[str, object]:
+    """返回端点选择器信息：``{baseUrl, model, hasKey, presets: [...]}``。
+
+    读 .env 文件（不是 os.environ）——GUI 启动时 env 还没 load，见
+    ``gui.llm_config`` 的说明。
+    """
+    from boss_zhipin.gui.llm_config import read_llm_config
+    return read_llm_config()
+
+
+class _LlmConfigBody(_CamelModel):
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""  # 空 → 只改 base_url/model，不动已存的 key
+
+
+@commands.command()
+async def set_llm_config(body: _LlmConfigBody) -> dict[str, str]:
+    """存端点配置（base_url + model + 可选 key）。"""
+    from boss_zhipin.gui.llm_config import write_llm_config
+    write_llm_config(body.base_url, body.model, body.api_key or None)
+    return {"status": "saved"}
+
+
+# ---------- Config 面板：通用字段 ----------
 
 
 @commands.command()
