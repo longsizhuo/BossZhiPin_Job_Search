@@ -160,6 +160,12 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
     if runner.is_running():
         raise RuntimeError("already running")
 
+    # 名字非空前置校验：usr_name 会作为招呼语署名直接传给业务代码，空字符串会
+    # 让招呼语署名为空。跟简历校验一样在这里同步抛 ValueError，前端 catch 后
+    # 秒级可见，而不是等跑起来才发现署名空了。
+    if not body.config.usr_name.strip():
+        raise ValueError("请先在「运行」页填写你的名字（招呼语署名用）")
+
     # 简历存在性前置校验：不查的话，缺简历会等 cli import（torch，~10s）跑完才在
     # run_provider 深处抛 FileNotFoundError，只剩 Progress 面板一行容易错过的
     # [error]，用户感受是"点开始没反应"。尤其 standalone .app 的 CWD 是应用数据
