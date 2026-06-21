@@ -311,6 +311,40 @@ async def get_telemetry_summary() -> dict[str, dict]:
     return {"summary": telemetry_summary(since_records=1000)}
 
 
+# ---------- 检查更新（只提示，不自动下载） ----------
+
+
+@commands.command()
+async def check_for_update() -> dict[str, object]:
+    """前端启动时调一次——查 GitHub 最新 release，返回是否有新版。
+
+    返回 ``{current, latest, url, hasUpdate}``。``check_latest_release`` 永不抛
+    异常（没网 / 限速静默降级成 hasUpdate=False），所以这里不用额外兜错。
+    """
+    from boss_zhipin.gui.updates import check_latest_release
+    return check_latest_release()
+
+
+class _OpenUrlBody(_CamelModel):
+    url: str
+
+
+@commands.command()
+async def open_release_page(body: _OpenUrlBody) -> dict[str, str]:
+    """用系统默认浏览器打开下载页——「前往下载」按钮调。
+
+    只允许打开本仓库 releases 域下的 URL，避免前端被注入任意 URL 当跳板。
+    """
+    import webbrowser
+
+    from boss_zhipin.gui.updates import REPO
+
+    allowed_prefix = f"https://github.com/{REPO}/releases"
+    target = body.url if body.url.startswith(allowed_prefix) else f"{allowed_prefix}/latest"
+    webbrowser.open(target)
+    return {"status": "opened"}
+
+
 def main() -> int:
     """启动 PyTauri app——根据 BOSS_TAURI_STANDALONE 自动切换 wheel / standalone。"""
     if BOSS_STANDALONE:

@@ -2,6 +2,7 @@ import { useState } from "react";
 import RunPage from "./pages/Run";
 import ConfigPage from "./pages/Config";
 import HistoryPage from "./pages/History";
+import UpdateBanner from "./components/UpdateBanner";
 import { useRunStore } from "./store";
 
 type Tab = "run" | "config" | "history";
@@ -15,6 +16,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <UpdateBanner />
       <header className="border-b-4 border-[var(--ink)] bg-[var(--paper)]">
         <div className="max-w-7xl mx-auto px-8 pt-8 pb-2 flex items-baseline gap-10">
           {/* 主标题：oversized serif italic，作为视觉锚点 */}
