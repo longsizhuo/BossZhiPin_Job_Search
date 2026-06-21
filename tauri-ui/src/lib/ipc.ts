@@ -118,7 +118,7 @@ export const ipc = {
     pyInvoke<{ status: string }>("open_issues_page", {}),
   // 出错卡片：日志文件夹路径（让用户知道去哪手动捞日志）。
   getLogDir: () =>
-    pyInvoke<{ dir: string; letters: string; telemetry: string }>("get_log_dir", {}),
+    pyInvoke<{ dir: string }>("get_log_dir", {}),
 };
 
 // 检查更新返回：当前版本 / 最新版本 / 下载页 URL / 是否有新版。

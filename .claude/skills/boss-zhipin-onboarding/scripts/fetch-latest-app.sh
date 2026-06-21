@@ -84,12 +84,20 @@ echo "✓ 下载完成：$file"
 # ── 4. 打开安装器（最后一步系统安全提示交给用户）──────────────────────
 if [ "$kind" = "dmg" ]; then
   echo "→ 挂载 DMG ..."
-  mp="$(hdiutil attach "$file" -nobrowse | grep -o '/Volumes/[^[:cntrl:]]*' | tail -1)"
-  open "$mp" 2>/dev/null || true
-  echo "✓ 安装窗口已弹出。接下来你自己操作："
-  echo "    1) 把「BOSS Zhipin Helper」拖到 Applications 文件夹"
-  echo "    2) 首次启动【别双击】——去 Applications 里【右键 →「打开」】过 Gatekeeper"
-  echo "    （装完可以在 Finder 侧边栏把挂载的安装盘推出/Eject）"
+  # grep 无匹配会返回非零，在 set -o pipefail 下会让整条命令失败 → 加 || true 兜住；
+  # 解析不到挂载点就退回"手动双击"，至少别静默 abort、也别假装挂好了。
+  attach_out="$(hdiutil attach "$file" -nobrowse 2>/dev/null || true)"
+  mp="$(printf '%s\n' "$attach_out" | grep -o '/Volumes/[^[:cntrl:]]*' | tail -1 || true)"
+  if [ -n "$mp" ]; then
+    open "$mp" 2>/dev/null || true
+    echo "✓ 安装窗口已弹出。接下来你自己操作："
+    echo "    1) 把「BOSS Zhipin Helper」拖到 Applications 文件夹"
+    echo "    2) 首次启动【别双击】——去 Applications 里【右键 →「打开」】过 Gatekeeper"
+    echo "    （装完可以在 Finder 侧边栏把挂载的安装盘推出/Eject）"
+  else
+    echo "✓ 已下载到 $file"
+    echo "  自动挂载没解析到挂载点，请到 Finder 里双击这个 .dmg 手动安装。"
+  fi
 else
   echo "→ 启动安装器 ..."
   ( start "" "$file" ) 2>/dev/null \
