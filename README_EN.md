@@ -14,6 +14,15 @@ Reads job descriptions from BOSS Zhipin, asks an LLM to write a polite cover-let
 
 ---
 
+## Disclaimer
+
+- This is a **free, open-source** personal job-search helper, provided under the [MIT License](LICENSE). It is **not for sale, takes no donations, and is not monetised in any way**.
+- Using browser automation against BOSS Zhipin **may violate its Terms of Service**. Whether and how you use it — and any consequences (account risk, legal risk, etc.) — are **entirely your own responsibility**.
+- The software is provided **"AS IS", without warranty of any kind**. The authors and contributors are not liable for any loss or dispute arising from its use.
+- Please use this tool for **personal job-seeking only**, review each generated greeting before sending, and never use it for mass-spamming, harassment, or anything that harms others.
+
+---
+
 ## Quick Start (5 minutes)
 
 ### Prerequisites
