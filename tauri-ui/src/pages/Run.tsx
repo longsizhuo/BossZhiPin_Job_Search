@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo } from "../lib/ipc";
+import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo, type LlmConfig } from "../lib/ipc";
 import { useRunStore } from "../store";
 
 // 运行页：editorial 三段式布局
@@ -10,8 +10,9 @@ import { useRunStore } from "../store";
 // 3) 控制按钮行（黑底白字反色）
 // 4) 双面板：进度事件 + 日志（日志保留黑底白字，刚好契合 monochrome）
 export default function RunPage() {
-  const [providers, setProviders] = useState<string[]>([]);
-  const [providersError, setProvidersError] = useState<string | null>(null);
+  // AI 端点在「配置」tab 设；运行页只读展示 + 校验是否配好了 key。
+  const [llmCfg, setLlmCfg] = useState<LlmConfig | null>(null);
+  const [llmError, setLlmError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // 简历（拖拽上传）
@@ -20,10 +21,15 @@ export default function RunPage() {
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  // 开始前校验的内联报错（替代生硬的 alert）
+  const [startError, setStartError] = useState<string | null>(null);
+  // 出错卡片：复制日志反馈 + 日志路径（懒加载）
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
+  const [logPaths, setLogPaths] = useState<{ dir: string } | null>(null);
+
   // Global form states
   const usrName = useRunStore((s) => s.formUsrName);
   const label = useRunStore((s) => s.formLabel);
-  const provider = useRunStore((s) => s.formProvider);
   const dryRun = useRunStore((s) => s.formDryRun);
   const setFormState = useRunStore((s) => s.setFormState);
 
@@ -40,14 +46,9 @@ export default function RunPage() {
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    ipc.detectProviders()
-      .then(({ providers }) => {
-        setProviders(providers);
-        if (providers.length > 0 && !useRunStore.getState().formProvider) {
-          setFormState({ formProvider: providers[0] });
-        }
-      })
-      .catch((e) => setProvidersError(String(e)));
+    ipc.getLlmConfig()
+      .then((cfg) => setLlmCfg(cfg))
+      .catch((e) => setLlmError(String(e)));
 
     ipc.getEnvFields().then(({ fields }) => {
       const stateUpdate: Record<string, any> = {};
@@ -114,6 +115,41 @@ export default function RunPage() {
     };
   }, []);
 
+  // 文件选择器上传：webview 的 <input type=file> 给不到真实路径，只能读字节再传。
+  // 跟拖拽并存——已有简历时也能点「选择文件」换，不是只剩拖拽。
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function arrayBufferToBase64(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    const chunk = 0x8000; // 分块避免 String.fromCharCode 参数过多爆栈
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  }
+
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 重置：允许再次选同一个文件也能触发 change
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setResumeError("只接受 PDF 文件");
+      return;
+    }
+    setResumeBusy(true);
+    setResumeError(null);
+    try {
+      const b64 = arrayBufferToBase64(await file.arrayBuffer());
+      const info = await ipc.setResumeBytes(file.name, b64);
+      setResumeInfo(info);
+    } catch (err) {
+      setResumeError(String(err));
+    } finally {
+      setResumeBusy(false);
+    }
+  }
+
   // 自动滚动到底
   useEffect(() => {
     if (logScrollRef.current) {
@@ -127,12 +163,27 @@ export default function RunPage() {
   }, [events.length]);
 
   async function handleStart() {
+    // 开始前的拦截统一走内联 startError（不再用生硬的原生 alert）。
+    // 校验顺序跟后端 start_run 的 pre-flight 对齐，让用户秒级看到缺了啥，
+    // 而不是 run 闪一下、错误埋进日志面板。
+    setStartError(null);
     if (!usrName.trim()) {
-      alert("请填用户名");
+      setStartError("请填用户名（会出现在招呼语末尾的署名）");
       return;
     }
-    if (!provider) {
-      alert("没有可用的 provider，先去配置 tab 填 API key");
+    if (!llmCfg || !llmCfg.hasKey) {
+      setStartError("还没配 AI —— 去「配置」tab 选端点并填 API key");
+      return;
+    }
+    if (!llmCfg.model) {
+      // 缺 model 时后端 _build_client 会在第一个岗位抛错 break 掉整个 run，提前拦
+      setStartError("还没填模型（model）—— 去「配置」tab 选个预设会自动填，或手填 LLM_MODEL");
+      return;
+    }
+    if (!resume) {
+      // 后端 start_run 第一道就是 current_resume() is None → ValueError；前端先拦，
+      // 避免 run 闪一下 on→off、错误只埋在日志里。
+      setStartError("请先上传简历 PDF（拖进来或点「选择文件」）");
       return;
     }
     setBusy(true);
@@ -145,7 +196,6 @@ export default function RunPage() {
     const config: RunConfig = {
       usrName: usrName.trim(),
       label: label.trim(),
-      provider,
       dryRun,
     };
 
@@ -180,6 +230,29 @@ export default function RunPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // 出错时的"把日志发我"入口：检测进度事件里有没有 error / loop_ended(error)。
+  const hasError = events.some(
+    (e) => e.kind === "error" || (e.kind === "loop_ended" && e.payload?.reason === "error")
+  );
+
+  // 出错后懒加载一次日志目录路径，告诉用户文件在哪、可手动附带。
+  useEffect(() => {
+    if (hasError && !logPaths) {
+      ipc.getLogDir().then((p) => setLogPaths({ dir: p.dir })).catch(() => {});
+    }
+  }, [hasError, logPaths]);
+
+  async function copyLogs() {
+    // 复制当前日志面板缓冲到剪贴板——用户自己粘给作者 / 贴 issues，绝不自动发送。
+    try {
+      await navigator.clipboard.writeText(logs.join("\n"));
+      setCopyMsg("✓ 已复制日志，粘贴给作者或贴到 issues 即可");
+    } catch {
+      setCopyMsg("复制失败 —— 日志就在下面面板，可手动全选复制");
+    }
+    setTimeout(() => setCopyMsg(null), 4000);
   }
 
   // 状态副标题：替代原本的右侧 idle/running 小字
@@ -239,30 +312,25 @@ export default function RunPage() {
             />
           </Field>
 
-          <Field label="LLM Provider">
-            {providersError ? (
+          <Field label="AI 端点" hint="在「配置」tab 设">
+            {llmError ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
                 <span className="badge-outline mr-2">ERROR</span>
-                检测失败：{providersError}
+                读取失败：{llmError}
               </div>
-            ) : providers.length === 0 ? (
+            ) : !llmCfg || !llmCfg.hasKey ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
                 <span className="badge-invert mr-2">No Key</span>
-                去「配置」tab 填一个 API key
+                去「配置」tab 选端点并填 API key
               </div>
             ) : (
-              <select
-                value={provider}
-                onChange={(e) => setFormState({ formProvider: e.target.value })}
-                disabled={running}
-                className="field-input"
-              >
-                {providers.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+              // 只读展示：端点 + model 在配置页设，这里不再有下拉
+              <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)] flex items-center gap-2 flex-wrap">
+                <span className="badge-invert">{llmCfg.model || "（未填 model）"}</span>
+                <span className="text-[var(--muted-fg)] text-xs break-all">
+                  {llmCfg.baseUrl || "OpenAI 默认端点"}
+                </span>
+              </div>
             )}
           </Field>
 
@@ -300,16 +368,29 @@ export default function RunPage() {
         <div className="flex items-baseline justify-between">
           <label className="field-label">简历 PDF</label>
           <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-fg)] italic">
-            Required · 拖入即存
+            Required · 拖入或选择
           </span>
         </div>
+        {/* 隐藏的原生文件选择器：拖拽之外的另一条上传路径 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={onFilePicked}
+        />
         <div
+          onClick={() => {
+            if (!running) fileInputRef.current?.click();
+          }}
+          role="button"
+          tabIndex={running ? -1 : 0}
           className={[
             "mt-2 border-2 border-dashed p-6 transition-colors duration-100",
             dragging
               ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
               : "border-[var(--border-light)]",
-            running ? "opacity-50" : "",
+            running ? "opacity-50" : "cursor-pointer hover:border-[var(--ink)]",
           ].join(" ")}
         >
           {resumeBusy ? (
@@ -319,13 +400,19 @@ export default function RunPage() {
               <span className="font-mono text-sm">
                 <span className="mr-2">■</span>当前简历：{resume.filename}
               </span>
-              <span className="mono-tag">把新的 PDF 拖进来可替换</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="mono-tag">拖入新 PDF 可替换，或</span>
+                <PickFileButton onPick={() => fileInputRef.current?.click()} disabled={running} />
+              </div>
             </div>
           ) : (
             <>
               <p className="font-mono text-sm">
-                <span className="mr-2">⤓</span>把简历 PDF 拖到这里 —— 上传一次，之后不用再传
+                <span className="mr-2">⤓</span>把简历 PDF 拖进来，或点这里打开文件浏览器 —— 上传一次，之后不用再传
               </p>
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                <PickFileButton onPick={() => fileInputRef.current?.click()} disabled={running} />
+              </div>
               <p className="mt-2 text-xs font-mono text-[var(--muted-fg)] italic">
                 没设置简历时点「开始」会直接报错。
               </p>
@@ -341,29 +428,79 @@ export default function RunPage() {
       </section>
 
       {/* === 段落 3：动作按钮 === */}
-      <section className="flex items-center gap-4 flex-wrap pt-6 border-t border-[var(--border-light)]">
-        <button
-          onClick={handleStart}
-          disabled={running || busy}
-          className="btn"
-        >
-          开始 <span className="ml-1">→</span>
-        </button>
-        <button
-          onClick={handleStop}
-          disabled={!running || busy}
-          className="btn-outline"
-        >
-          ▌ 停止
-        </button>
-        <button
-          onClick={handleReset}
-          disabled={running || busy}
-          className="btn-ghost"
-        >
-          重置 Chrome
-        </button>
+      <section className="pt-6 border-t border-[var(--border-light)]">
+        <div className="flex items-center gap-4 flex-wrap">
+          <button
+            onClick={handleStart}
+            disabled={running || busy}
+            className="btn"
+          >
+            开始 <span className="ml-1">→</span>
+          </button>
+          <button
+            onClick={handleStop}
+            disabled={!running || busy}
+            className="btn-outline"
+          >
+            ▌ 停止
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={running || busy}
+            className="btn-ghost"
+          >
+            重置 Chrome
+          </button>
+        </div>
+        {/* 开始前校验未过：内联报错（替代原生 alert），点哪个字段缺一目了然 */}
+        {startError && (
+          <div className="mt-4 border-2 border-[var(--ink)] p-3 flex items-start gap-3">
+            <span className="badge-invert flex-shrink-0">检查</span>
+            <span className="text-sm font-mono">{startError}</span>
+          </div>
+        )}
       </section>
+
+      {/* === 段落 3.5：出错了？把日志发我（手动，不自动上报）=== */}
+      {hasError && (
+        <section className="border-2 border-[var(--ink)] p-5 space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="badge-invert">▌ 出问题了？</span>
+            <span className="text-sm font-serif italic text-[var(--muted-fg)]">
+              复制日志贴给作者，或贴到 issues —— 不会自动发送任何东西。
+            </span>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button type="button" onClick={copyLogs} className="btn-outline text-xs">
+              复制日志
+            </button>
+            <button
+              type="button"
+              onClick={() => ipc.openIssuesPage().catch(() => {})}
+              className="btn-outline text-xs"
+            >
+              打开 issues ↗
+            </button>
+            {copyMsg && (
+              <span className="text-xs font-mono text-[var(--muted-fg)]">{copyMsg}</span>
+            )}
+          </div>
+          {logPaths && (
+            <p className="text-xs font-mono text-[var(--muted-fg)] break-all">
+              日志文件夹：{logPaths.dir}
+              <button
+                type="button"
+                onClick={() =>
+                  navigator.clipboard.writeText(logPaths.dir).catch(() => {})
+                }
+                className="ml-2 underline underline-offset-2 hover:opacity-70"
+              >
+                复制路径
+              </button>
+            </p>
+          )}
+        </section>
+      )}
 
       {/* === 段落 4：双面板 === */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-0 border-2 border-[var(--ink)]">
@@ -397,6 +534,24 @@ export default function RunPage() {
         </Panel>
       </section>
     </div>
+  );
+}
+
+// 简历上传的「选择文件…」按钮——有/无简历两个分支共用，避免两处改一处漏。
+// stopPropagation 是因为它常嵌在可点击的虚线框里，别冒泡再触发一次 picker。
+function PickFileButton({ onPick, disabled }: { onPick: () => void; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick();
+      }}
+      disabled={disabled}
+      className="btn-outline text-xs"
+    >
+      选择文件…
+    </button>
   );
 }
 
@@ -464,6 +619,7 @@ const KIND_STYLES: Record<string, EventStyle> = {
   login_ok: { variant: "default", prefix: "✓" },
   job_found: { variant: "default", prefix: "→" },
   job_skipped: { variant: "weak", prefix: "—" },
+  scoring_degraded: { variant: "error", prefix: "⚠️" },
   letter_sent: { variant: "invert", prefix: "■" },
   feed_exhausted: { variant: "invert", prefix: "■" },
   loop_ended: { variant: "invert", prefix: "■" },

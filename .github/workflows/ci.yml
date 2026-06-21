@@ -43,24 +43,24 @@ jobs:
           # 是向后兼容 shim。CI 同时校验两侧：(1) 包导入，(2) main.py shim 能 import。
           uv run python -c "import main"
           uv run python -c "import boss_zhipin"
-          uv run python -c "from boss_zhipin.providers import PROVIDER_ENV_KEYS, PROVIDER_SIGNUP, detect_providers"
-          uv run python -c "from boss_zhipin.cli import _cli_main, detect_providers, pick_provider, run_provider, RECOMMEND_URL, PROVIDER_ENV_KEYS"
+          uv run python -c "from boss_zhipin.providers import LLM_PRESETS, is_llm_configured, LLM_API_KEY_ENV, LLM_BASE_URL_ENV, LLM_MODEL_ENV"
+          uv run python -c "from boss_zhipin.cli import _cli_main, run_provider, ensure_llm_configured, is_llm_configured, RECOMMEND_URL, LLM_PRESETS"
           uv run python -c "from boss_zhipin.paths import is_standalone, app_data_dir, ensure_app_data_cwd, APP_IDENTIFIER"
           uv run python -c "from boss_zhipin.audit import validate_letter, log_attempt"
           uv run python -c "from boss_zhipin.audit.telemetry import record_llm_call, telemetry_summary, estimate_cost_cny"
           uv run python -c "from boss_zhipin.utils.retry import retry_with_backoff"
           uv run python -c "from boss_zhipin.vectorization import VectorStore, embed_resume, text_hash, split_text"
-          uv run python -c "from boss_zhipin.models.llm import PROVIDERS, generate_letter, _build_client"
-          uv run python -c "from boss_zhipin.models.openai_assistant import create_assistant, OPENAI_API_KEY"
+          uv run python -c "from boss_zhipin.models.llm import generate_letter, _build_client, _provider_label, current_provider_label"
           uv run python -c "from boss_zhipin.models.prompts import assistant_instructions"
           uv run python -c "from boss_zhipin.models.job_matcher import should_apply, keyword_match, llm_match_score, extract_keywords_from_text, extract_resume_text"
           uv run python -c "from boss_zhipin.website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message, shutdown"
-          uv run python -c "from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat, chat"
+          uv run python -c "from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat, send_response_and_go_back"
           uv run python -c "from scripts.dump_boss_page import PROBE_JS, TARGET_URL, main"
           uv run python -c "from boss_zhipin.gui.events import ProgressEvent, EventKind, emit, set_emit_callback"
           uv run python -c "from boss_zhipin.gui.runner import start_run, stop_run, is_running, get_task, reset"
           uv run python -c "from boss_zhipin.gui.log_bridge import CallbackHandler, install, uninstall"
           uv run python -c "from boss_zhipin.gui.env_io import read_env, write_env, field_meta, KNOWN_KEYS"
+          uv run python -c "from boss_zhipin.gui.llm_config import read_llm_config, write_llm_config"
           uv run python -c "from boss_zhipin.gui.resume_io import store_resume, current_resume, DEFAULT_RESUME_PATH"
           uv run python -c "from boss_zhipin.gui.history import read_letters"
           uv run python -c "from boss_zhipin.gui.updates import check_latest_release, is_newer, current_version, REPO"
@@ -68,8 +68,9 @@ jobs:
       - name: 跑 pytest
         run: uv run pytest tests/ -v --tb=short
         env:
-          # 单测不需要真凭据，给一个假值避免下游意外去读真的 .env
-          DEEPSEEK_API_KEY: test-fake-key
+          # 单测不需要真凭据，给假值避免下游意外去读真的 .env
+          LLM_API_KEY: test-fake-key
+          LLM_MODEL: test-fake-model
           BOSS_RETRY_BASE_DELAY: "0.01"  # 加速 retry 测试
           BOSS_RETRY_MAX_DELAY: "0.05"
 

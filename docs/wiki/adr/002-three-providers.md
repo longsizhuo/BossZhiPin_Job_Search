@@ -1,6 +1,15 @@
 # ADR-002：三家 LLM provider 共用 OpenAI SDK，按 `base_url` 切换
 
-- **状态**：已采纳
+> **2026-06 更新（部分被取代）**：本 ADR 的核心洞见——"都用 OpenAI SDK 按
+> `base_url` 切换"——被保留并**推到极致**。原本代码里写死的 `deepseek` /
+> `chatgpt` / `claude` 三个具名 provider（含 OpenAI 专用的 Assistants 分支）已
+> 移除，统一成**一个通用 OpenAI 兼容端点** = `LLM_BASE_URL` + `LLM_API_KEY` +
+> `LLM_MODEL`。这样 DeepSeek / OpenAI / Claude 以及百炼·通义千问 / 智谱GLM /
+> 豆包 / Kimi / 本地 Ollama / 任意中转都用同一条路，代码不再"认牌子"。GUI 用一个
+> 「常用快捷」预设下拉自动填 base_url + model（`providers.LLM_PRESETS`），但那只是
+> 便利，不是支持范围的限制。下文保留作历史背景。
+
+- **状态**：已采纳（2026-06 起 provider 路由部分被通用端点取代，见上）
 - **日期**：2026-05-10
 - **决策人**：longsizhuo
 - **相关 commit**：[`e83e314`](https://github.com/longsizhuo/BossZhiPin_Job_Search/commit/e83e314)

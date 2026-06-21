@@ -70,7 +70,6 @@ class RunConfig(_CamelModel):
     """
     usr_name: str
     label: str = ""
-    provider: str  # "deepseek" / "chatgpt" / "claude"
     dry_run: bool = False
     resume_path: str = ""  # 空 → 用 RESUME_PATH env / 默认值
 
@@ -79,23 +78,6 @@ class StartRunBody(_CamelModel):
     config: RunConfig
     progress_channel: JavaScriptChannelId[ProgressEvent]
     log_channel: JavaScriptChannelId[str]
-
-
-@commands.command()
-async def detect_providers() -> dict[str, list[str]]:
-    """前端用来填 provider 下拉——返回当前 env 里配了哪些 API key。
-
-    **不能 import boss_zhipin.cli**：cli top-level 会拉起 vectorization →
-    sentence_transformers → torch，import 一次 3-10 秒。这个命令在 app 启动
-    时就被 Run 页的 useEffect 触发，会阻塞 portal 的 asyncio loop，导致用户
-    切到 Config 页时 ``get_env_fields`` IPC 一直排队 → 看上去"Config 一直
-    loading"。
-
-    所以从 ``boss_zhipin.providers``（轻模块，只依赖 os）走。
-    """
-    from boss_zhipin.providers import detect_providers as _detect_providers  # noqa: WPS433
-
-    return {"providers": _detect_providers()}
 
 
 @commands.command()
@@ -132,10 +114,9 @@ def _build_main_loop_factory(config: RunConfig):
 
         resume_path = environ.get("RESUME_PATH", "").strip() or DEFAULT_RESUME_PATH
 
-        # 简历预处理 + provider 路由全部走 cli.run_provider——CLI 和 GUI
-        # 共用一份逻辑，避免行为分叉。unknown provider 由它抛 ValueError。
+        # 简历预处理 + 主循环全部走 cli.run_provider——CLI 和 GUI 共用一份逻辑。
+        # 用哪个 LLM 端点由 LLM_* env 决定（Config 页已存进 .env + os.environ）。
         await run_provider(
-            provider=config.provider,
             usr_name=config.usr_name,
             label=config.label,
             dry_run=config.dry_run,
@@ -154,8 +135,9 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
 
     报错：
     - already running → ``RuntimeError`` 由 PyTauri 自动序列化成前端 ``catch`` 能拿到的字符串
-    - bad provider → ``ValueError``
+    - 没填用户名 → ``ValueError``
     - 找不到简历 → ``ValueError``
+    - 没配 LLM key / model → ``ValueError``
     """
     if runner.is_running():
         raise RuntimeError("already running")
@@ -177,6 +159,22 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
     if current_resume() is None:
         raise ValueError(
             "找不到简历 PDF —— 在「运行」页把简历 PDF 拖进来（或在 .env 设 RESUME_PATH）"
+        )
+
+    # LLM 端点前置校验：缺 key 或缺 model 跑起来都会在 _build_client 深处抛
+    # RuntimeError——而主循环的 except 会把它当一次性错误 break 掉整个 run（第一个
+    # 岗位就挂）。这里提前拦，前端秒级可见。注意要连 model 一起查：只查 key 的话，
+    # "填了 key 没填 model" 会通过校验，然后 generate_letter 在第一个岗位抛错收摊。
+    from boss_zhipin.gui.llm_config import read_llm_config
+
+    llm_cfg = read_llm_config()
+    if not llm_cfg["hasKey"]:
+        raise ValueError(
+            "还没配 AI —— 去「配置」tab 选个服务商（或自定义端点）并填 API key"
+        )
+    if not llm_cfg["model"]:
+        raise ValueError(
+            "还没填模型（model）—— 去「配置」tab 选个预设会自动填，或手填 LLM_MODEL"
         )
 
     progress_channel = body.progress_channel.channel_on(webview_window.as_ref_webview())
@@ -227,7 +225,35 @@ async def shutdown_browser() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# ---------- Config 面板 ----------
+# ---------- Config 面板：AI 端点（base_url + key + model） ----------
+
+
+@commands.command()
+async def get_llm_config() -> dict[str, object]:
+    """返回端点选择器信息：``{baseUrl, model, hasKey, presets: [...]}``。
+
+    真相源 os.environ 优先、回退 .env 文件（GUI 启动时 env 还没 load）——见
+    ``gui.llm_config.read_llm_config`` 的说明。
+    """
+    from boss_zhipin.gui.llm_config import read_llm_config
+    return read_llm_config()
+
+
+class _LlmConfigBody(_CamelModel):
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""  # 空 → 只改 base_url/model，不动已存的 key
+
+
+@commands.command()
+async def set_llm_config(body: _LlmConfigBody) -> dict[str, str]:
+    """存端点配置（base_url + model + 可选 key）。"""
+    from boss_zhipin.gui.llm_config import write_llm_config
+    write_llm_config(body.base_url, body.model, body.api_key or None)
+    return {"status": "saved"}
+
+
+# ---------- Config 面板：通用字段 ----------
 
 
 @commands.command()
@@ -277,6 +303,25 @@ async def set_resume(body: _SetResumeBody) -> dict[str, str]:
     """
     from boss_zhipin.gui.resume_io import store_resume
     return store_resume(body.path)
+
+
+class _SetResumeBytesBody(_CamelModel):
+    filename: str       # 原文件名（只用 basename，决定落盘文件名）
+    data_base64: str    # 文件字节的 base64（前端 <input type=file> 读出来编的）
+
+
+@commands.command()
+async def set_resume_bytes(body: _SetResumeBytesBody) -> dict[str, str]:
+    """文件选择器（``<input type=file>``）选的 PDF → 存进 ``resume/`` 设为当前简历。
+
+    webview 的 file input 给不到真实磁盘路径（安全限制），只能拿字节，所以走这条；
+    拖拽上传仍走 ``set_resume``（那条有真实路径）。返回 ``{filename, path}``，
+    校验失败抛 ``ValueError``。
+    """
+    import base64
+
+    from boss_zhipin.gui.resume_io import store_resume_bytes
+    return store_resume_bytes(body.filename, base64.b64decode(body.data_base64))
 
 
 @commands.command()
@@ -343,6 +388,33 @@ async def open_release_page(body: _OpenUrlBody) -> dict[str, str]:
     target = body.url if body.url.startswith(allowed_prefix) else f"{allowed_prefix}/latest"
     webbrowser.open(target)
     return {"status": "opened"}
+
+
+@commands.command()
+async def open_issues_page() -> dict[str, str]:
+    """用系统默认浏览器打开本仓库的"新建 issue"页——出错卡片的「打开 issues」调。
+
+    URL 写死成本仓库 issues 域，前端传不进任意 URL。跟 ``open_release_page`` 一样
+    只是个跳转，**不自动上报任何东西**——日志要不要发、发什么，全由用户手动决定。
+    """
+    import webbrowser
+
+    from boss_zhipin.gui.updates import REPO
+
+    webbrowser.open(f"https://github.com/{REPO}/issues/new")
+    return {"status": "opened"}
+
+
+@commands.command()
+async def get_log_dir() -> dict[str, str]:
+    """返回日志目录的绝对路径，让用户知道去哪手动捞日志附到反馈里。
+
+    项目没有持久 app.log（运行日志走 GUI 实时面板）；落盘的是 audit 的
+    ``letters.jsonl`` 和 telemetry 的 ``llm_calls.jsonl``，都在这个目录下。
+    """
+    from boss_zhipin.audit import LOG_PATH
+
+    return {"dir": str(LOG_PATH.parent.resolve())}
 
 
 def main() -> int:

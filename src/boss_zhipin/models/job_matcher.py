@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from pypdf import PdfReader
 
 from boss_zhipin.audit.telemetry import record_llm_call
-from boss_zhipin.models.llm import _build_client, _call_chat_completion
+from boss_zhipin.models.llm import _build_client, _call_chat_completion, current_provider_label
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -56,9 +56,11 @@ def extract_resume_text(pdf_path: str) -> str:
 def _llm_extract_keywords(resume_text: str) -> list[str]:
     """使用 LLM 从简历中提取技术关键词。"""
     try:
-        client, llm_model = _build_client("deepseek")
-    except RuntimeError:
-        log.warning("DEEPSEEK_API_KEY 未设置，无法提取专属关键词")
+        client, llm_model = _build_client()
+    except RuntimeError as e:
+        # _build_client 对缺 key / 缺 model 都抛 RuntimeError——把真实 message
+        # 透出来，别一律写成"LLM_API_KEY 未设置"误导用户去改错的变量。
+        log.warning("LLM 未配置好，无法提取专属关键词：%s", e)
         return []
 
     prompt = f"""你是一位资深的 HR 和技术专家。请从以下简历中提取出该候选人的核心技术栈、使用的工具、以及相关的业务方向。
@@ -141,17 +143,24 @@ def llm_match_score(
     job_description: str,
     resume_text: str,
     matched_keywords: list[str],
-) -> tuple[int, str]:
-    """第二层：LLM 精筛。评估简历与职位的匹配度，返回 0-100 分。
+) -> tuple[int, str, bool]:
+    """第二层：LLM 精筛。评估简历与职位的匹配度。
 
-    评分链路任何一环不可用（缺 API key / 调用失败 / 回复解析不出分数）
-    都 fail-open 返回 100 放行——宁可少过滤，不能因为评分挂了把职位静默跳过。
+    返回 ``(score, reason, degraded)``：
+
+    - ``score`` 0-100；
+    - ``reason`` 一句话说明；
+    - ``degraded`` 是否走了 fail-open——评分链路任何一环不可用（缺配置 / 调用失败 /
+      回复解析不出分数）都返回 ``(100, ..., True)`` 放行，宁可少过滤也不静默跳过。
+      ``degraded=True`` 让上层能把"第二层过滤其实没在跑"显式告诉用户，而不是悄悄放行。
     """
     try:
-        client, llm_model = _build_client("deepseek")
-    except RuntimeError:
-        log.warning("DEEPSEEK_API_KEY 未设置，跳过 LLM 评分")
-        return 100, "无法评分（缺少 API key）"
+        client, llm_model = _build_client()
+    except RuntimeError as e:
+        # 缺 key 或缺 model 都会到这——透出真实 message，别误导成只缺 key。
+        log.warning("LLM 未配置好，跳过 LLM 评分：%s", e)
+        return 100, "无法评分（LLM 未配置）", True
+    prov = current_provider_label()
 
     prompt = f"""你是一位专业的招聘匹配分析师。请评估以下简历与职位描述的匹配程度。
 
@@ -188,18 +197,18 @@ def llm_match_score(
         )
     except Exception as e:
         record_llm_call(
-            provider="deepseek", model=llm_model,
+            provider=prov, model=llm_model,
             input_tokens=0, output_tokens=0,
             latency_ms=int((time.monotonic() - t0) * 1000),
             ok=False, error=f"{type(e).__name__}: {e}",
         )
         log.warning("LLM 评分调用失败: %s", e)
-        return 100, f"评分失败（{e}）"
+        return 100, f"评分失败（{e}）", True
 
     content = response.choices[0].message.content or ""
     usage = getattr(response, "usage", None)
     record_llm_call(
-        provider="deepseek", model=llm_model,
+        provider=prov, model=llm_model,
         input_tokens=getattr(usage, "prompt_tokens", 0) if usage else 0,
         output_tokens=getattr(usage, "completion_tokens", 0) if usage else 0,
         latency_ms=int((time.monotonic() - t0) * 1000),
@@ -214,12 +223,12 @@ def llm_match_score(
         # LLM 没按格式回复时同样 fail-open；fail-closed（按 0 分算）
         # 会把职位静默跳过，且日志里看不出原因
         log.warning("LLM 评分回复解析失败，按 100 放行。回复内容: %r", content[:200])
-        return 100, "评分解析失败"
+        return 100, "评分解析失败", True
 
     score = min(100, max(0, int(score_match.group(1))))
     reason_match = re.search(r"理由[:：]\s*(.+)", content)
     reason = reason_match.group(1).strip() if reason_match else ""
-    return score, reason
+    return score, reason, False
 
 
 def should_apply(
@@ -265,7 +274,7 @@ def should_apply(
         else:
             log.debug("语义距离验证通过 (距离: %.2f)", distance)
 
-    score, reason = llm_match_score(job_description, resume_text, matched_keywords)
+    score, reason, degraded = llm_match_score(job_description, resume_text, matched_keywords)
 
     return score >= min_llm_score, {
         "stage": "llm",
@@ -273,4 +282,6 @@ def should_apply(
         "score": score,
         "reason": reason,
         "threshold": min_llm_score,
+        # True = 评分走了 fail-open（没真评成），上层据此提示"第二层过滤暂时没在跑"
+        "scoring_degraded": degraded,
     }

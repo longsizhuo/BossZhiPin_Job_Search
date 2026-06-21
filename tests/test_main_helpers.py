@@ -10,80 +10,30 @@ import pytest
 from boss_zhipin import cli as main  # test 内继续叫 main，少改
 
 
-# ---------- detect_providers ----------
+# ---------- ensure_llm_configured ----------
+# 重构后（2026-06）不再分 provider：统一一个 OpenAI 兼容端点（LLM_BASE_URL +
+# LLM_API_KEY + LLM_MODEL），CLI 只校验 LLM_API_KEY 配了没。
 
-class TestDetectProviders:
-    def test_no_keys_returns_empty(self, monkeypatch):
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
-        assert main.detect_providers() == []
-
-    def test_single_key_returns_one(self, monkeypatch):
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
-        assert main.detect_providers() == ["deepseek"]
-
-    def test_empty_string_treated_as_unset(self, monkeypatch):
-        # 设了但是空字符串 → 视为没配（因为 os.getenv 返回 "" 是 falsy）
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "")
-        assert main.detect_providers() == []
-
-    def test_multiple_keys_returns_all(self, monkeypatch):
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        result = main.detect_providers()
-        # 顺序按 PROVIDER_ENV_KEYS 字典声明顺序
-        assert set(result) == {"deepseek", "claude"}
-        assert result == ["deepseek", "claude"]
-
-
-# ---------- pick_provider ----------
-
-class TestPickProvider:
-    def test_no_keys_exits(self, monkeypatch, capsys):
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
+class TestEnsureLlmConfigured:
+    def test_no_key_exits_with_signup_help(self, monkeypatch, capsys):
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
         with pytest.raises(SystemExit) as exc:
-            main.pick_provider()
+            main.ensure_llm_configured()
         assert exc.value.code == 1
         out = capsys.readouterr().out
-        assert "没在环境里找到任何 LLM provider 的 API key" in out
-        # 必须列出 signup URL，让用户能直接申请
+        assert "LLM_API_KEY" in out
+        # 列出常见平台申请地址，让用户能直接申请
         assert "platform.deepseek.com" in out
-        assert "platform.openai.com" in out
-        assert "console.anthropic.com" in out
 
-    def test_single_key_skips_menu(self, monkeypatch, capsys):
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
-        assert main.pick_provider() == "deepseek"
-        out = capsys.readouterr().out
-        assert "自动选用" in out
-        assert "deepseek" in out
+    def test_empty_string_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "")
+        with pytest.raises(SystemExit):
+            main.ensure_llm_configured()
 
-    def test_multiple_keys_prompts_and_picks(self, monkeypatch, capsys):
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        # 模拟用户输入 "2"（选 claude）
-        monkeypatch.setattr("builtins.input", lambda _prompt="": "2")
-        assert main.pick_provider() == "claude"
-
-    def test_multiple_keys_invalid_then_valid(self, monkeypatch):
-        for env in main.PROVIDER_ENV_KEYS.values():
-            monkeypatch.delenv(env, raising=False)
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        inputs = iter(["", "abc", "99", "1"])
-        monkeypatch.setattr("builtins.input", lambda _prompt="": next(inputs))
-        assert main.pick_provider() == "deepseek"
+    def test_key_set_returns_without_exit(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "sk-test")
+        assert main.ensure_llm_configured() is None
+        assert main.is_llm_configured() is True
 
 
 # ---------- ensure_usr_name ----------
@@ -151,3 +101,33 @@ class TestGetLabel:
     def test_whitespace_stripped(self, monkeypatch):
         monkeypatch.setenv("BOSS_LABEL", "   测试岗位   ")
         assert main.get_label() == "测试岗位"
+
+
+# ---------- _int_env ----------
+# GUI 配置页能直接填 BOSS_MIN_MATCH_SCORE 这类数值字段，裸 int() 遇到坏值会崩整个
+# run。_int_env 把坏值 / 越界降级到区间内，永不抛——跑得起来比跑得精确重要。
+
+class TestIntEnv:
+    def test_unset_returns_default(self, monkeypatch):
+        monkeypatch.delenv("BOSS_MIN_MATCH_SCORE", raising=False)
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 50
+
+    def test_valid_in_range(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "73")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 73
+
+    def test_non_integer_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "abc")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 50
+
+    def test_empty_string_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "   ")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 50
+
+    def test_above_range_clamped_to_hi(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "150")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 100
+
+    def test_below_range_clamped_to_lo(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "-20")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 0

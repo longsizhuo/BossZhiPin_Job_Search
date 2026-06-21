@@ -22,6 +22,7 @@ EventKind = Literal[
     "login_ok",          # 登录态确认
     "job_found",         # 抓到一个 JD，payload: {index, jd_preview}
     "job_skipped",       # 跳过当前岗位，payload: {index, reason, detail}
+    "scoring_degraded",  # LLM 评分 fail-open（本轮全放行），payload: {detail}，每轮最多一次
     "letter_sent",       # 招呼语处理完成，payload: {index, status: "sent"|"dry_run"|"blocked"}
     "feed_exhausted",    # 推荐 feed 跑到底（连续 N 次拿不到 JD），payload: {total}
     "loop_ended",        # runner 包的整段结束，payload: {reason: "completed"|"cancelled"|"error"}
@@ -33,7 +34,7 @@ class ProgressEvent(BaseModel):
     """业务代码发给 GUI 的结构化事件。
 
     payload 是个 dict 而非每个 kind 一个子类，因为：
-    - 事件类型少（8 个）
+    - 事件类型少（个位数）
     - 前端用 switch/match 一处分发，子类反而要类型守卫
     - 加字段不破坏老代码
     """

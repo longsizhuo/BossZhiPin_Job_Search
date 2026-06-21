@@ -3,7 +3,7 @@
 > **🤖 If You are AI agents **：当用户问"怎么装这个项目"、"`uv` 命令找不到"、"扫码扫不上"、"`DEEPSEEK_API_KEY` 怎么填"之类的小白问题时，**请直接加载并使用本仓库的 [`boss-zhipin-onboarding`](.claude/skills/boss-zhipin-onboarding/) skill**。它自带 5 步里程碑流程、`scripts/check-env.sh` 一键诊断脚本，以及面向零基础用户的沟通规范，比你从这份 README 重新组织一遍引导更可靠。
 [中文](README.md) · [English](README_EN.md)
 
-读 BOSS 上的岗位描述，用 LLM 给 HR 生成一封礼貌的打招呼语，按规则审核后再发送。支持 DeepSeek / OpenAI / Claude 三个 provider，任意一个 key 都能起跑。
+读 BOSS 上的岗位描述，用 LLM 给 HR 生成一封礼貌的打招呼语，按规则审核后再发送。走**任意 OpenAI 兼容端点**（DeepSeek / OpenAI / Claude / 通义千问·百炼 / 智谱GLM / 豆包 / Kimi / 本地 Ollama …），配好 `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` 三个变量就能起跑。
 
 > 原作者已经暂停维护，目前由我和小伙伴们继续优化。已完成迁移到 [uv](https://docs.astral.sh/uv/) 管理依赖、移除 langchain 全家桶、把浏览器自动化从 Selenium 迁到 [nodriver](https://github.com/ultrafunkamsterdam/nodriver)（绕过 BOSS 反爬更稳）。
 
@@ -88,9 +88,9 @@ Standalone 模式的用户数据（`.env` / `chrome_profile/` / `logs/` /
 
 | 字段 | 作用 | 必填 |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | DeepSeek key（[申请](https://platform.deepseek.com/api_keys)） | 三选一 |
-| `OPENAI_API_KEY` | OpenAI key，用于 Assistants 模式（[申请](https://platform.openai.com/api-keys)） | 三选一 |
-| `ANTHROPIC_API_KEY` | Anthropic Claude key（[申请](https://console.anthropic.com/settings/keys)） | 三选一 |
+| `LLM_API_KEY` | LLM 端点的 API key（各家申请地址见 `.env.example`） | 是 |
+| `LLM_BASE_URL` | 端点 base_url，留空 = OpenAI 默认端点（如 `https://api.deepseek.com`） | 否（默认 OpenAI 端点） |
+| `LLM_MODEL` | 模型名（如 `deepseek-chat` / `gpt-4o` / `claude-sonnet-4-6`） | 是 |
 | `BOSS_USR_NAME` | 你的名字，会出现在招呼语署名里 | 否（不填会启动时问你） |
 | `BOSS_LABEL` | 求职 tag，比如"后端开发（成都）" | 否（不填就用 BOSS 默认推荐 feed） |
 | `RESUME_PATH` | 简历 PDF 路径 | 否（默认 `./resume/my_cover.pdf`） |
@@ -99,17 +99,24 @@ Standalone 模式的用户数据（`.env` / `chrome_profile/` / `logs/` /
 | `BOSS_EXCLUDE_KEYWORDS` | 岗位黑名单关键字（用逗号分隔，如"外包,驻场"） | 否 |
 | `LOGLEVEL` | 日志级别 | 否（默认 INFO） |
 
-**只配一个 key 时脚本会自动选用，不会让你选**；配多个时启动时让你选；一个都不配会列出 signup 链接然后退出。
+不分 provider，统一一个 OpenAI 兼容端点。`LLM_API_KEY` 没填会列出各家 signup 链接然后退出；填好直接起跑。GUI 配置页有「常用快捷」下拉，选了会自动填好 `LLM_BASE_URL` + `LLM_MODEL`。
 
 ---
 
-## 三种 provider 怎么选
+## 端点怎么选
 
-| Provider | 路径 | 优势 | 劣势 |
-|---|---|---|---|
-| DeepSeek | RAG 模式（自建 chroma 向量库 + sentence-transformers 召回简历片段） | 最便宜，质量过得去 | 首次跑会下载 embedding 模型 (~430MB) |
-| OpenAI | Assistants API + Vector Stores（OpenAI 那边管简历向量化） | 不用本地 embedding，省内存 | 每次调用比 DeepSeek 贵不少 |
-| Claude | RAG 模式（同 DeepSeek） | 招呼语风格更自然 | 模型本身贵，但走 RAG 单次 token 少 |
+代码**不认牌子**：任意 OpenAI 兼容端点都走同一条路——本地 chroma 向量库 +
+sentence-transformers 召回简历片段（RAG），再调端点的 `chat.completions` 生成招呼语。
+所以选哪家只是成本 / 中文语感的取舍：
+
+| 端点 | 优势 | 劣势 |
+|---|---|---|
+| DeepSeek | 最便宜，国内直连，质量过得去 | —— |
+| OpenAI | 生态成熟 | 每次调用比 DeepSeek 贵不少，国内需代理 |
+| Claude | 招呼语风格最自然 | 模型本身贵，但走 RAG 单次 token 少 |
+| 通义千问·百炼 / 智谱GLM / 豆包 / Kimi / 本地 Ollama … | 国内直连 / 可本地跑 | 视端点而定 |
+
+首次跑会下载 ~430MB 的 embedding 模型（all-mpnet-base-v2），跟选哪个端点无关。
 
 ---
 
@@ -162,10 +169,10 @@ BOSS_CHROME_PROFILE="$HOME/Library/Application Support/Google/Chrome" uv run mai
 .
 ├── main.py                       # 兼容 shim：uv run main.py 仍然可用，实际委托 boss_zhipin.cli
 ├── src/boss_zhipin/              # 业务代码都在这个可安装 package 里
-│   ├── cli.py                    # CLI 入口，处理交互/env 校验/路由 provider
+│   ├── cli.py                    # CLI 入口，处理交互/env 校验（ensure_llm_configured）
+│   ├── providers.py              # 轻量元数据：LLM_PRESETS（常用端点快捷）+ is_llm_configured
 │   ├── models/
-│   │   ├── llm.py                # provider 配置 + DeepSeek/Claude 的 chat completions 调用
-│   │   ├── openai_assistant.py   # OpenAI Assistants 模式（带 vector store 的）
+│   │   ├── llm.py                # 通用 OpenAI 兼容端点 client + RAG 招呼语生成
 │   │   └── prompts.py            # 招呼语 prompt 模板
 │   ├── website_oper/
 │   │   ├── finding_jobs.py       # 浏览器自动化（nodriver），sync facade + async impl

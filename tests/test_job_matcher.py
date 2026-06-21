@@ -51,7 +51,7 @@ def telemetry_spy(monkeypatch):
 def fake_client(monkeypatch):
     """绕开 _build_client 的真实 env 检查。"""
     monkeypatch.setattr(
-        job_matcher, "_build_client", lambda provider: (object(), "deepseek-chat")
+        job_matcher, "_build_client", lambda: (object(), "deepseek-chat")
     )
 
 
@@ -112,9 +112,10 @@ class TestLlmMatchScore:
             job_matcher, "_call_chat_completion",
             lambda client, **kwargs: _fake_response("分数: 85\n理由: 技能高度匹配"),
         )
-        score, reason = llm_match_score("JD", "简历", ["Python"])
+        score, reason, degraded = llm_match_score("JD", "简历", ["Python"])
         assert score == 85
         assert reason == "技能高度匹配"
+        assert degraded is False  # 正常评分，没走 fail-open
         # telemetry 记了一条成功调用
         assert len(telemetry_spy) == 1
         assert telemetry_spy[0]["ok"] is True
@@ -127,7 +128,7 @@ class TestLlmMatchScore:
             job_matcher, "_call_chat_completion",
             lambda client, **kwargs: _fake_response("分数：85\n理由：技能高度匹配"),
         )
-        score, reason = llm_match_score("JD", "简历", ["Python"])
+        score, reason, _ = llm_match_score("JD", "简历", ["Python"])
         assert score == 85
         assert reason == "技能高度匹配"
 
@@ -136,24 +137,27 @@ class TestLlmMatchScore:
             job_matcher, "_call_chat_completion",
             lambda client, **kwargs: _fake_response("分数: 150\n理由: 超纲了"),
         )
-        score, _ = llm_match_score("JD", "简历", [])
+        score, _, _ = llm_match_score("JD", "简历", [])
         assert score == 100
 
     def test_fail_open_without_api_key(self, monkeypatch):
-        # conftest 已清空 env；这里再兜一层防本机 .env 经 load_dotenv 漏进来
-        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-        score, reason = llm_match_score("JD", "简历", [])
+        # conftest 已清空 env；这里再兜一层防本机 .env 经 load_dotenv 漏进来。
+        # 缺 key 时 _build_client 抛 RuntimeError → fail-open 放行（返回 100）。
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        score, reason, degraded = llm_match_score("JD", "简历", [])
         assert score == 100
-        assert "API key" in reason
+        assert "未配置" in reason
+        assert degraded is True  # fail-open 必须标记降级
 
     def test_fail_open_on_api_error(self, monkeypatch, fake_client, telemetry_spy):
         def boom(client, **kwargs):
             raise ConnectionError("network down")
 
         monkeypatch.setattr(job_matcher, "_call_chat_completion", boom)
-        score, reason = llm_match_score("JD", "简历", [])
+        score, reason, degraded = llm_match_score("JD", "简历", [])
         assert score == 100
         assert "评分失败" in reason
+        assert degraded is True
         # 失败也要记 telemetry
         assert telemetry_spy[0]["ok"] is False
 
@@ -163,9 +167,10 @@ class TestLlmMatchScore:
             job_matcher, "_call_chat_completion",
             lambda client, **kwargs: _fake_response("我觉得这个职位很适合你！"),
         )
-        score, reason = llm_match_score("JD", "简历", [])
+        score, reason, degraded = llm_match_score("JD", "简历", [])
         assert score == 100
         assert "解析失败" in reason
+        assert degraded is True
 
 
 # ---------- should_apply ----------
@@ -181,7 +186,7 @@ class TestShouldApply:
 
     def test_passes_both_stages(self, monkeypatch):
         monkeypatch.setattr(
-            job_matcher, "llm_match_score", lambda jd, resume, kws: (80, "匹配")
+            job_matcher, "llm_match_score", lambda jd, resume, kws: (80, "匹配", False)
         )
         apply, details = should_apply(
             "招聘 Python 工程师，熟悉 Docker", ["Python", "Docker"], "简历全文",
@@ -190,10 +195,11 @@ class TestShouldApply:
         assert apply
         assert details["stage"] == "llm"
         assert details["score"] == 80
+        assert details["scoring_degraded"] is False
 
     def test_rejected_at_llm_stage(self, monkeypatch):
         monkeypatch.setattr(
-            job_matcher, "llm_match_score", lambda jd, resume, kws: (40, "匹配度低")
+            job_matcher, "llm_match_score", lambda jd, resume, kws: (40, "匹配度低", False)
         )
         apply, details = should_apply(
             "招聘 Python 工程师，熟悉 Docker", ["Python", "Docker"], "简历全文",
@@ -201,3 +207,16 @@ class TestShouldApply:
         )
         assert not apply
         assert details["score"] == 40
+
+    def test_surfaces_scoring_degraded(self, monkeypatch):
+        # 评分 fail-open（返回 degraded=True）→ should_apply 在 details 里带出来，
+        # 让主循环能提示用户"第二层过滤暂时没在跑"。
+        monkeypatch.setattr(
+            job_matcher, "llm_match_score", lambda jd, resume, kws: (100, "无法评分（LLM 未配置）", True)
+        )
+        apply, details = should_apply(
+            "招聘 Python 工程师，熟悉 Docker", ["Python", "Docker"], "简历全文",
+            min_llm_score=70,
+        )
+        assert apply  # fail-open 放行
+        assert details["scoring_degraded"] is True

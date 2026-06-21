@@ -9,6 +9,7 @@ export type EventKind =
   | "login_ok"
   | "job_found"
   | "job_skipped"
+  | "scoring_degraded"
   | "letter_sent"
   | "feed_exhausted"
   | "loop_ended"
@@ -22,9 +23,25 @@ export type ProgressEvent = {
 export type RunConfig = {
   usrName: string;
   label: string;
-  provider: string;
   dryRun: boolean;
   resumePath?: string;
+};
+
+// LLM 端点预设（自动填 base_url + model 的快捷项；不是支持范围的限制）。
+export type LlmPreset = {
+  name: string;
+  label: string;
+  baseUrl: string;
+  model: string;
+  signupUrl: string;
+};
+
+// 当前 LLM 端点配置 + 预设列表。hasKey 只说有没有配 key，不回传明文。
+export type LlmConfig = {
+  baseUrl: string;
+  model: string;
+  hasKey: boolean;
+  presets: LlmPreset[];
 };
 
 export type EnvField = {
@@ -67,8 +84,11 @@ export type TelemetrySummary = {
 // ---------- wrappers ----------
 
 export const ipc = {
-  detectProviders: () => pyInvoke<{ providers: string[] }>("detect_providers", {}),
   isRunning: () => pyInvoke<{ running: boolean }>("is_running", {}),
+  // LLM 端点：选预设/自定义 + base_url + model + key。apiKey 留空 = 不动已存 key。
+  getLlmConfig: () => pyInvoke<LlmConfig>("get_llm_config", {}),
+  setLlmConfig: (baseUrl: string, model: string, apiKey: string) =>
+    pyInvoke<{ status: string }>("set_llm_config", { baseUrl, model, apiKey }),
   startRun: (config: RunConfig, progressChannel: unknown, logChannel: unknown) =>
     pyInvoke<{ status: string }>("start_run", { config, progressChannel, logChannel }),
   stopRun: () => pyInvoke<{ status: string }>("stop_run", {}),
@@ -79,6 +99,9 @@ export const ipc = {
   // 简历：set_resume 把拖入的 PDF 复制进 app 数据目录的 resume/；get_resume 读回当前简历。
   setResume: (path: string) =>
     pyInvoke<{ filename: string; path: string }>("set_resume", { path }),
+  // 文件选择器选的 PDF：webview 给不到真实路径，只能传字节（base64）。
+  setResumeBytes: (filename: string, dataBase64: string) =>
+    pyInvoke<{ filename: string; path: string }>("set_resume_bytes", { filename, dataBase64 }),
   getResume: () => pyInvoke<{ resume: ResumeInfo | null }>("get_resume", {}),
   getLetters: (limit: number = 200) =>
     pyInvoke<{ letters: LetterRecord[] }>("get_letters", { limit }),
@@ -90,6 +113,12 @@ export const ipc = {
   // 用系统浏览器打开下载页（后端做了 URL 白名单校验）。
   openReleasePage: (url: string) =>
     pyInvoke<{ status: string }>("open_release_page", { url }),
+  // 出错卡片：打开本仓库 issues（系统浏览器跳转，不自动上报任何日志）。
+  openIssuesPage: () =>
+    pyInvoke<{ status: string }>("open_issues_page", {}),
+  // 出错卡片：日志文件夹路径（让用户知道去哪手动捞日志）。
+  getLogDir: () =>
+    pyInvoke<{ dir: string }>("get_log_dir", {}),
 };
 
 // 检查更新返回：当前版本 / 最新版本 / 下载页 URL / 是否有新版。

@@ -10,7 +10,7 @@
 ```
                         ┌─────────────────────┐
                         │      main.py        │
-                        │ env / provider 路由 │
+                        │   env 校验 / 启动    │
                         └──────────┬──────────┘
                                    │
                                    ▼
@@ -22,21 +22,21 @@
         ┌─────────────┘              │          └──────────────┐
         ▼                            ▼                         ▼
 ┌──────────────┐          ┌──────────────────┐        ┌─────────────────┐
-│ finding_jobs │          │   LLM provider   │        │  audit + log    │
-│  (nodriver)  │          │ (deepseek/chat-  │        │                 │
-│              │          │  gpt/claude)     │        │ validate_letter │
+│ finding_jobs │          │   LLM 端点 client │        │  audit + log    │
+│  (nodriver)  │          │ (OpenAI 兼容,    │        │                 │
+│              │          │  不分牌子)        │        │ validate_letter │
 │ - open       │          │                  │        │ log_attempt     │
 │ - log_in     │          │ models/llm.py    │        │ record_llm_call │
-│ - JD by idx  │          │ write_response   │        └─────────────────┘
-│ - click_xpath│          │   .chat()        │
+│ - JD by idx  │          │ generate_letter  │        └─────────────────┘
+│ - click_xpath│          │                  │
 │ - send msg   │          │                  │
 └──────────────┘          └──────────────────┘
         │                          │
         ▼                          ▼
   ┌──────────┐             ┌────────────────┐
-  │ Chrome   │             │ OpenAI / Deep- │
-  │ (CDP)    │             │ seek / Claude  │
-  │ profile  │             │ API endpoint   │
+  │ Chrome   │             │ LLM_BASE_URL   │
+  │ (CDP)    │             │ + LLM_API_KEY  │
+  │ profile  │             │ + LLM_MODEL    │
   └──────────┘             └────────────────┘
                                    │
                                    ▼
@@ -56,8 +56,8 @@
 | `main.py` | 启动时校验 env、走 prompt 让用户输入缺的、按 provider 分发 | 调浏览器 / 调 LLM |
 | `audit/__init__.py` | 招呼语校验（长度/CJK/黑名单）+ 业务审计 JSONL | 调 LLM / 调浏览器 |
 | `audit/telemetry.py` | LLM 调用 telemetry JSONL（成本/时长/token） | 业务校验 |
-| `models/llm.py` | DeepSeek / Claude / OpenAI 的统一 chat completions 入口 | 浏览器操作 |
-| `models/openai_assistant.py` | OpenAI Assistants API（需要 vector store） | 直接调 chat completions |
+| `providers.py` | 轻量元数据：`LLM_PRESETS`（常用端点快捷）+ `is_llm_configured` | 调 LLM / 调浏览器 |
+| `models/llm.py` | 通用 OpenAI 兼容端点 client（call-time 读 `LLM_*`）+ RAG 招呼语生成 | 浏览器操作 |
 | `utils/retry.py` | 通用指数退避装饰器 | 知道任何业务 |
 | `vectorization.py` | 简历 PDF 解析 + chroma 向量化 + 召回 | 调 LLM |
 | `website_oper/finding_jobs.py` | nodriver 浏览器自动化（sync facade + async impl） | 业务逻辑（生成招呼语等） |
@@ -70,9 +70,12 @@
 按简历 PDF 的 MD5 建一个独立的持久化目录 `vectorstores/<md5>/`，之后跑同样的
 PDF 就直接 reload，不需要重新 embedding。
 
-### `PROVIDERS`（[models/llm.py](../../models/llm.py)）
-三家 LLM provider 的配置注册表。增删 provider 只需要改这一个 dict，加 1 行。
-利用所有家都提供 OpenAI 兼容端点这一事实，省掉了 anthropic-sdk 等额外依赖。
+### 通用 OpenAI 兼容端点（[models/llm.py](../../models/llm.py) + [providers.py](../../src/boss_zhipin/providers.py)）
+代码**不认牌子**：只 import `openai`，统一一个端点 = `LLM_BASE_URL` + `LLM_API_KEY`
++ `LLM_MODEL`。`llm._build_client()` 无参，call-time 读这三个 env。DeepSeek /
+OpenAI / Claude / 通义千问 / 智谱GLM / 豆包 / Kimi / 本地 Ollama 等都走同一条路，
+省掉了 anthropic-sdk 等额外依赖。`providers.LLM_PRESETS` 只是给 GUI 一个「常用快捷」
+下拉自动填 base_url + model，不是支持范围的限制。
 
 ### sync facade + async impl（[finding_jobs.py](../../website_oper/finding_jobs.py)）
 nodriver 只有 async API，但项目里 `main.py` 和 `write_response.py` 是 sync 流程。
@@ -94,15 +97,18 @@ nodriver 只有 async API，但项目里 `main.py` 和 `write_response.py` 是 s
 失败的招呼语**绝对不发送**，但会照样写一行到 `logs/letters.jsonl`，方便事后调
 prompt。
 
-## 三种 provider 路径对比
+## 端点路径：统一一条路
 
-| 维度 | DeepSeek | OpenAI Assistants | Claude |
-|---|---|---|---|
-| 入口函数 | `generate_letter` | `chat`（在 write_response.py） | `generate_letter` |
-| RAG 实现 | 本地 chroma + sentence-transformers 召回 | OpenAI Vector Store（远端） | 同 DeepSeek |
-| 单次调用成本 | 最便宜 | 中 | 偏贵 |
-| 首次跑下载量 | ~430 MB（embedding 模型） | 0 | ~430 MB |
-| 适用场景 | 量大、对成本敏感 | 想要 OpenAI 一站式 | 在意中文语感、能负担成本 |
+代码不分 provider，**所有端点都走同一条路**：本地 chroma + sentence-transformers
+召回简历片段（RAG）→ 调端点的 `chat.completions` 生成招呼语。入口统一是
+`generate_letter`，没有按牌子分支。选哪家只是成本 / 中文语感的取舍：
+
+| 维度 | DeepSeek | OpenAI | Claude | 其它（通义/智谱/豆包/Kimi/Ollama …） |
+|---|---|---|---|---|
+| 单次调用成本 | 最便宜 | 中 | 偏贵 | 视端点而定 |
+| 适用场景 | 量大、对成本敏感 | 生态成熟 | 在意中文语感、能负担成本 | 国内直连 / 本地跑 |
+
+首次跑都会下载 ~430 MB 的 embedding 模型（all-mpnet-base-v2），跟选哪个端点无关。
 
 ## 业务循环主流程
 
@@ -128,7 +134,7 @@ while True:
     if chat_btn_text != "立即沟通":
         job_index += 1; continue
 
-    letter = generate_letter(...) or chat(...)
+    letter = generate_letter(...)
     validation = validate_letter(letter)
 
     if not validation.ok:
@@ -151,7 +157,6 @@ while True:
 | `logs/llm_calls.jsonl` | 每次 LLM 调用的 telemetry（成本 / 延迟 / token） | `audit.telemetry.record_llm_call` |
 | `vectorstores/<md5>/` | 简历向量化结果（chroma 持久化目录） | `vectorization.embed_pdf` |
 | `chrome_profile/` | 独立 Chrome profile，含登录 cookie | `nodriver`（间接） |
-| `assistant.json` | OpenAI Assistant ID 缓存 | `models.openai_assistant.create_assistant` |
 
 全部在 `.gitignore` 里，不会进版本控制。
 

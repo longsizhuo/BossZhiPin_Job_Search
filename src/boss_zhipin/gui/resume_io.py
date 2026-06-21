@@ -49,16 +49,25 @@ def _persist_resume_path(abs_path: str) -> None:
     os.environ["RESUME_PATH"] = abs_path
 
 
-def _is_readable_pdf(path: Path) -> bool:
-    """轻量校验：扩展名是 .pdf 且 pypdf 能解析出至少一页。"""
-    if path.suffix.lower() != ".pdf":
-        return False
+def _pdf_has_pages(path: Path) -> bool:
+    """pypdf 能解析出至少一页就算可读——**不看扩展名**。
+
+    单独抽出来是因为字节上传会先写成 ``*.tmp`` 再校验，那时后缀不是 ``.pdf``，
+    没法走带后缀检查的 ``_is_readable_pdf``；两条上传路径共用这一份内容校验。
+    """
     try:
         from pypdf import PdfReader  # 局部 import，避免无谓开销
 
         return len(PdfReader(str(path)).pages) > 0
     except Exception:
         return False
+
+
+def _is_readable_pdf(path: Path) -> bool:
+    """轻量校验：扩展名是 .pdf 且 pypdf 能解析出至少一页。"""
+    if path.suffix.lower() != ".pdf":
+        return False
+    return _pdf_has_pages(path)
 
 
 def store_resume(src: str) -> dict[str, str]:
@@ -80,6 +89,41 @@ def store_resume(src: str) -> dict[str, str]:
     # 用户把已托管的那份又拖了一次 → 源和目标同一个文件，copy 会 SameFileError。
     if src_path.resolve() != dest:
         shutil.copyfile(src_path, dest)
+
+    abs_path = str(dest)
+    _persist_resume_path(abs_path)
+    return {"filename": dest.name, "path": abs_path}
+
+
+def store_resume_bytes(filename: str, data: bytes) -> dict[str, str]:
+    """把通过文件选择器选的 PDF（以字节传入）写进 ``resume/`` 并设为当前简历。
+
+    跟 ``store_resume`` 同一套校验 / 落点 / 持久化，区别只是来源是字节流而非磁盘
+    路径——Tauri webview 的 ``<input type=file>`` 给不到真实路径（安全限制），只能
+    拿到 File 的字节。拖拽上传仍走 ``store_resume``（那条有真实路径）。
+
+    返回 ``{"filename": ..., "path": ...}``（path 绝对）。校验失败抛 ``ValueError``。
+    """
+    name = Path(filename).name  # 只取 basename，挡掉路径穿越（如 "../../x.pdf"）
+    # 用 Path.suffix 跟拖拽路径（store_resume → _is_readable_pdf）保持一致口径：
+    # 无扩展点的 "pdf" 这种在 suffix 下是 "" → 拒，避免两条入口判定不一致。
+    if Path(name).suffix.lower() != ".pdf":
+        raise ValueError("不是一个 PDF 文件（需要 .pdf）")
+    if not data:
+        raise ValueError("文件是空的")
+
+    dest_dir = Path(RESUME_DIR)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = (dest_dir / name).resolve()
+
+    # 先写临时文件校验，过了再原子替换——别把半个坏 PDF 落成当前简历。
+    # 复用 _pdf_has_pages（不看后缀，因为 tmp 是 .tmp）跟拖拽路径同一份内容校验。
+    tmp = dest.with_name(dest.name + ".tmp")
+    tmp.write_bytes(data)
+    if not _pdf_has_pages(tmp):
+        tmp.unlink(missing_ok=True)
+        raise ValueError("不是一个能读取的 PDF（需要 .pdf 且至少一页）")
+    tmp.replace(dest)
 
     abs_path = str(dest)
     _persist_resume_path(abs_path)
