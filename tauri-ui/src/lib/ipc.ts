@@ -96,6 +96,10 @@ export const ipc = {
   getEnvFields: () => pyInvoke<{ fields: EnvField[] }>("get_env_fields", {}),
   writeEnvFields: (updates: Record<string, string>) =>
     pyInvoke<{ status: string }>("write_env_fields", { updates }),
+  // UI 语言：读回 .env 的 BOSS_LANG（空 = 没设过，前端用系统探测的默认）。
+  getLanguage: () => pyInvoke<{ lang: string }>("get_language", {}),
+  setLanguage: (lang: string) =>
+    pyInvoke<{ status: string }>("set_language", { lang }),
   // 简历：set_resume 把拖入的 PDF 复制进 app 数据目录的 resume/；get_resume 读回当前简历。
   setResume: (path: string) =>
     pyInvoke<{ filename: string; path: string }>("set_resume", { path }),
@@ -119,6 +123,9 @@ export const ipc = {
   // 出错卡片：日志文件夹路径（让用户知道去哪手动捞日志）。
   getLogDir: () =>
     pyInvoke<{ dir: string }>("get_log_dir", {}),
+  // 「复制信息去问 AI」：把 app 上下文 + 传入的实时日志打成可直接粘给 AI 的 markdown。
+  getAiHelpReport: (logs: string[]) =>
+    pyInvoke<{ text: string }>("get_ai_help_report", { logs }),
 };
 
 // 检查更新返回：当前版本 / 最新版本 / 下载页 URL / 是否有新版。

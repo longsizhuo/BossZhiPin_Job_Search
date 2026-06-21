@@ -80,6 +80,14 @@ Standalone 模式的用户数据（`.env` / `chrome_profile/` / `logs/` /
 `vectorstores/`）落在 `~/Library/Application Support/com.longsizhuo.boss-zhipin/`，
 跟 repo 目录互不干扰。
 
+**界面语言**：GUI 支持中文 / English 切换。「配置」页顶部有「界面语言 · Language」
+下拉，选了即时生效、无需重启，偏好存进 `.env` 的 `BOSS_LANG`。首次启动按系统语言
+自动选一个默认。
+
+**用不明白？**右上角「🆘 复制Log问AI」一键把 app 介绍 + 版本/系统/配置体检 + 最近
+日志（不含 API key 明文）复制到剪贴板，粘到 ChatGPT / Claude 等任意 AI 就能得到针对性
+帮助——给只下载 release、不会看代码的用户兜底。
+
 ---
 
 ## `.env` 字段速查
@@ -97,6 +105,7 @@ Standalone 模式的用户数据（`.env` / `chrome_profile/` / `logs/` /
 | `DRY_RUN` | `1` = 只生成不发送 | 否 |
 | `BOSS_MIN_MATCH_SCORE` | LLM 匹配分阈值 | 否（默认 50） |
 | `BOSS_EXCLUDE_KEYWORDS` | 岗位黑名单关键字（用逗号分隔，如"外包,驻场"） | 否 |
+| `BOSS_LANG` | GUI 界面语言（`zh` / `en`），一般在「配置」页切换、自动写入 | 否（默认跟随系统） |
 | `LOGLEVEL` | 日志级别 | 否（默认 INFO） |
 
 不分 provider，统一一个 OpenAI 兼容端点。`LLM_API_KEY` 没填会列出各家 signup 链接然后退出；填好直接起跑。GUI 配置页有「常用快捷」下拉，选了会自动填好 `LLM_BASE_URL` + `LLM_MODEL`。

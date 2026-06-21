@@ -77,11 +77,14 @@ The repo ships a fully-commented template at [`.env.example`](.env.example). Hig
 | `DRY_RUN` | `1` = generate & log but don't send | no |
 | `BOSS_MIN_MATCH_SCORE` | LLM match score threshold | no — default 50 |
 | `BOSS_EXCLUDE_KEYWORDS` | Blacklist keywords (comma separated) to skip jobs | no |
+| `BOSS_LANG` | GUI language (`zh` / `en`), usually toggled on the Config page and written automatically | no — follows the system locale |
 | `BOSS_CHROME_PROFILE` | Custom Chrome profile dir | no — defaults to `./chrome_profile` |
 | `LETTER_MIN_LEN` / `LETTER_MAX_LEN` | Letter length bounds | no — default 30 / 800 |
 | `LETTER_LOG_PATH` | Audit log path | no — default `./logs/letters.jsonl` |
 
 One unified OpenAI-compatible endpoint — no per-provider branching. Missing `LLM_API_KEY` prints a list of signup URLs and exits; set it and you're off. The GUI config page has a preset dropdown that auto-fills `LLM_BASE_URL` + `LLM_MODEL`.
+
+**UI language**: the desktop GUI ships in both Chinese and English. The Config page has a "界面语言 · Language" dropdown at the top — switching is instant (no restart), and the choice is saved to `BOSS_LANG` in `.env`. The first launch picks a default based on your system locale.
 
 ---
 

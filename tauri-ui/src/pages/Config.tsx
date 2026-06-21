@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { ipc, type EnvField, type LlmConfig } from "../lib/ipc";
+import { useRunStore, useT } from "../store";
+import { LANGS, type Lang } from "../lib/i18n";
 
 // 配置页：.env 编辑
 // monochrome 设计：editorial 表单 —— 每个字段 key 用反色 mono 标签
@@ -11,6 +13,9 @@ import { ipc, type EnvField, type LlmConfig } from "../lib/ipc";
 const CUSTOM = ""; // 下拉里「自定义」的值
 
 export default function ConfigPage() {
+  const t = useT();
+  const lang = useRunStore((s) => s.lang);
+  const setLang = useRunStore((s) => s.setLang);
   const [fields, setFields] = useState<EnvField[]>([]);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -117,23 +122,31 @@ export default function ConfigPage() {
 
   const selectedPreset = llmCfg?.presets.find((p) => p.name === preset);
 
+  // 切 UI 语言：立刻切（setLang，全 App 重渲染）+ 落到 .env（独立保存，不进
+  // 上面的 dirty/保存按钮流程，因为它是即时偏好不是表单字段）。持久化失败只是
+  // 下次启动回到默认，不打断当前会话，所以静默兜错。
+  function changeLang(next: Lang) {
+    setLang(next);
+    ipc.setLanguage(next).catch(() => {});
+  }
+
   return (
     <div className="space-y-10">
       {/* === 标题段 === */}
       <section className="flex items-end justify-between gap-6 pb-4 border-b-2 border-[var(--ink)]">
         <div>
           <h2 className="font-serif text-5xl leading-none tracking-tight">
-            配置 <span className="italic font-normal">/ Config</span>
+            {t("config.title")}
           </h2>
           <p className="mono-tag mt-3">
-            编辑 <span className="text-[var(--ink)]">.env</span> —— 仅本地，不会上传
+            {t("config.editPrefix")} <span className="text-[var(--ink)]">.env</span> {t("config.editSuffix")}
           </p>
         </div>
         <div className="flex items-center gap-4">
-          {saved && !dirty && <span className="badge-invert">✓ Saved</span>}
-          {dirty && <span className="badge-outline italic">unsaved · 未保存</span>}
+          {saved && !dirty && <span className="badge-invert">{t("config.saved")}</span>}
+          {dirty && <span className="badge-outline italic">{t("config.unsaved")}</span>}
           <button onClick={save} disabled={!dirty || saving} className="btn">
-            {saving ? "保存中..." : "保存 →"}
+            {saving ? t("btn.saving") : t("btn.save")}
           </button>
         </div>
       </section>
@@ -146,31 +159,47 @@ export default function ConfigPage() {
         </div>
       )}
 
+      {/* === 界面语言 === 标签刻意双语，切错语言也能找回；不走 dirty/保存流程，选即生效 */}
+      <section className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-10 items-center">
+        <label className="field-label">{t("config.language")}</label>
+        <select
+          value={lang}
+          onChange={(e) => changeLang(e.target.value as Lang)}
+          className="field-input font-mono"
+        >
+          {LANGS.map((l) => (
+            <option key={l.value} value={l.value}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+      </section>
+
       {loading ? (
-        <div className="font-mono text-sm text-[var(--muted-fg)] italic">Loading...</div>
+        <div className="font-mono text-sm text-[var(--muted-fg)] italic">{t("common.loading")}</div>
       ) : (
         <>
           {/* === AI 端点：base_url + key + model === */}
           {llmCfg && (
             <section className="space-y-5">
               <div>
-                <label className="field-label">AI 端点 / Endpoint</label>
+                <label className="field-label">{t("config.endpoint")}</label>
                 <p className="mt-1 text-xs font-mono text-[var(--muted-fg)] italic">
-                  任意 OpenAI 兼容端点都行 —— 选个常用快捷自动填，或「自定义」手填
+                  {t("config.endpointHint")}
                 </p>
               </div>
 
               {/* 常用快捷：默认「自定义」，选了自动填 base_url + model */}
               <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-10 items-center">
                 <div className="font-mono text-xs uppercase tracking-widest text-[var(--muted-fg)]">
-                  常用快捷 · Preset
+                  {t("config.preset")}
                 </div>
                 <select
                   value={preset}
                   onChange={(e) => pickPreset(e.target.value)}
                   className="field-input font-mono"
                 >
-                  <option value={CUSTOM}>自定义 / Custom</option>
+                  <option value={CUSTOM}>{t("config.custom")}</option>
                   {llmCfg.presets.map((p) => (
                     <option key={p.name} value={p.name}>
                       {p.label}
@@ -189,7 +218,7 @@ export default function ConfigPage() {
                   value={baseUrl}
                   onChange={(e) => editBaseUrl(e.target.value)}
                   className="field-input font-mono"
-                  placeholder="留空 = OpenAI 默认端点；如 https://api.deepseek.com"
+                  placeholder={t("config.baseUrlPlaceholder")}
                 />
               </div>
 
@@ -203,7 +232,7 @@ export default function ConfigPage() {
                   value={model}
                   onChange={(e) => editModel(e.target.value)}
                   className="field-input font-mono"
-                  placeholder="如 deepseek-chat / gpt-4o / glm-4-plus"
+                  placeholder={t("config.modelPlaceholder")}
                 />
               </div>
 
@@ -214,11 +243,11 @@ export default function ConfigPage() {
                     LLM_API_KEY
                   </div>
                   <p className="mt-2 text-[10px] font-mono uppercase tracking-widest text-[var(--muted-fg)] italic">
-                    secret · 密文
+                    {t("config.secret")}
                   </p>
                   {selectedPreset && (
                     <p className="mt-2 text-xs font-serif leading-snug text-[var(--muted-fg)] break-all">
-                      申请：{selectedPreset.signupUrl}
+                      {t("config.signup", { url: selectedPreset.signupUrl })}
                     </p>
                   )}
                 </div>
@@ -230,22 +259,24 @@ export default function ConfigPage() {
                       onChange={(e) => editKey(e.target.value)}
                       className="field-input font-mono flex-1"
                       placeholder={
-                        llmCfg.hasKey ? "已配置 · 留空保持不变，输入则覆盖" : "粘贴 API Key"
+                        llmCfg.hasKey
+                          ? t("config.keyConfiguredPlaceholder")
+                          : t("config.keyEmptyPlaceholder")
                       }
                     />
                     <button
                       type="button"
                       onClick={() => setShowKey((v) => !v)}
                       className="btn-ghost text-xs flex-shrink-0"
-                      aria-label={showKey ? "隐藏 key" : "显示 key"}
+                      aria-label={showKey ? t("config.hideKeyAria") : t("config.showKeyAria")}
                     >
-                      {showKey ? "隐藏" : "显示"}
+                      {showKey ? t("btn.hide") : t("btn.show")}
                     </button>
                   </div>
                   {/* 选了预设但还没配 key：提示去填，别等点开始才发现没 key */}
                   {selectedPreset && !llmCfg.hasKey && !keyEdit && (
                     <p className="mt-2 text-xs font-mono text-[var(--muted-fg)] italic">
-                      选了 {selectedPreset.label}，记得在上面粘贴它的 API key 再保存。
+                      {t("config.presetKeyHint", { label: selectedPreset.label })}
                     </p>
                   )}
                 </div>
@@ -262,11 +293,11 @@ export default function ConfigPage() {
                     {f.key}
                   </div>
                   <p className="mt-2 text-sm font-serif leading-snug text-[var(--ink)]">
-                    {f.label}
+                    {t(`field.${f.key}`)}
                   </p>
                   {f.isSecret && (
                     <p className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[var(--muted-fg)] italic">
-                      secret · 密文
+                      {t("config.secret")}
                     </p>
                   )}
                 </div>
@@ -276,7 +307,7 @@ export default function ConfigPage() {
                     value={valueFor(f.key, f.value)}
                     onChange={(e) => setField(f.key, e.target.value)}
                     className="field-input font-mono"
-                    placeholder={f.isSecret ? "已设 · 留空保存即视为删除" : ""}
+                    placeholder={f.isSecret ? t("config.secretSetPlaceholder") : ""}
                   />
                 </div>
               </div>
@@ -288,7 +319,7 @@ export default function ConfigPage() {
       {/* === 说明 === */}
       <section className="border-t-4 border-[var(--ink)] pt-6">
         <p className="text-sm font-serif italic text-[var(--muted-fg)] leading-relaxed max-w-2xl">
-          保存后即时生效——切回「运行」tab 就能用上新端点，无需重启 App。
+          {t("config.liveNote")}
         </p>
       </section>
     </div>

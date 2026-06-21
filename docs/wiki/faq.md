@@ -61,6 +61,22 @@ feed。如果你想筛某个具体岗位，去 BOSS 网站手动点一次那个 
 echo 'LLM_MODEL=gpt-4o-mini' >> .env
 ```
 
+### 用不明白 / 报错了，但我不会看代码怎么办？
+
+桌面 App 右上角有「🆘 复制Log问AI」按钮（出错卡片里也有「复制信息去问 AI」）。点一下
+会把一段**自带上下文**的求助文本复制到剪贴板：app 是干嘛的、版本、系统、当前配置
+体检（有没有配 key / model / 简历，**不含 key 明文**）、文档链接、最近运行日志。直接
+粘到 ChatGPT / Claude 等任意 AI，它就能对上号、给你具体步骤——不需要你先 clone 仓库
+或翻文档。生成逻辑在 `src/boss_zhipin/gui/diagnostics.py`。
+
+### 桌面 App 怎么切中英文？
+
+「配置」页顶部有「界面语言 · Language」下拉，选中文 / English 即时生效，无需重启。
+偏好存在 `.env` 的 `BOSS_LANG`（`zh` / `en`），首次启动按系统语言自动选默认。整套
+UI 文案 + 后端回传给前端的报错（缺简历 / 没配 key 之类）都跟着这个语言走。文案目录
+在前端 `tauri-ui/src/lib/i18n.ts`、后端 `src/boss_zhipin/gui/i18n.py`，加语言 / 改
+文案改这两处。
+
 ## 代码 / 开发
 
 ### 我想用一个新端点（比如 Kimi）

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo, type LlmConfig } from "../lib/ipc";
-import { useRunStore } from "../store";
+import { useRunStore, useT } from "../store";
 
 // 运行页：editorial 三段式布局
 // 1) 顶部 H2 + 状态副标题
@@ -10,6 +10,7 @@ import { useRunStore } from "../store";
 // 3) 控制按钮行（黑底白字反色）
 // 4) 双面板：进度事件 + 日志（日志保留黑底白字，刚好契合 monochrome）
 export default function RunPage() {
+  const t = useT();
   // AI 端点在「配置」tab 设；运行页只读展示 + 校验是否配好了 key。
   const [llmCfg, setLlmCfg] = useState<LlmConfig | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
@@ -94,7 +95,7 @@ export default function RunPage() {
           if (isRunning) return;
           const pdf = p.paths.find((x) => x.toLowerCase().endsWith(".pdf"));
           if (!pdf) {
-            setResumeError("只接受 PDF 文件");
+            setResumeError(t("run.onlyPdf"));
             return;
           }
           setResumeBusy(true);
@@ -168,22 +169,22 @@ export default function RunPage() {
     // 而不是 run 闪一下、错误埋进日志面板。
     setStartError(null);
     if (!usrName.trim()) {
-      setStartError("请填用户名（会出现在招呼语末尾的署名）");
+      setStartError(t("run.errNeedName"));
       return;
     }
     if (!llmCfg || !llmCfg.hasKey) {
-      setStartError("还没配 AI —— 去「配置」tab 选端点并填 API key");
+      setStartError(t("run.errNeedAi"));
       return;
     }
     if (!llmCfg.model) {
       // 缺 model 时后端 _build_client 会在第一个岗位抛错 break 掉整个 run，提前拦
-      setStartError("还没填模型（model）—— 去「配置」tab 选个预设会自动填，或手填 LLM_MODEL");
+      setStartError(t("run.errNeedModel"));
       return;
     }
     if (!resume) {
       // 后端 start_run 第一道就是 current_resume() is None → ValueError；前端先拦，
       // 避免 run 闪一下 on→off、错误只埋在日志里。
-      setStartError("请先上传简历 PDF（拖进来或点「选择文件」）");
+      setStartError(t("run.errNeedResume"));
       return;
     }
     setBusy(true);
@@ -202,7 +203,7 @@ export default function RunPage() {
     try {
       await ipc.startRun(config, progressChannel, logChannel);
     } catch (e) {
-      pushLog(`[start_run 失败] ${e}`);
+      pushLog(t("run.logStartFailed", { err: String(e) }));
       setRunning(false);
     } finally {
       setBusy(false);
@@ -214,7 +215,7 @@ export default function RunPage() {
     try {
       await ipc.stopRun();
     } catch (e) {
-      pushLog(`[stop_run 失败] ${e}`);
+      pushLog(t("run.logStopFailed", { err: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -224,9 +225,9 @@ export default function RunPage() {
     setBusy(true);
     try {
       await ipc.shutdownBrowser();
-      pushLog("[已关 Chrome，下次启动会重新打开]");
+      pushLog(t("run.logChromeClosed"));
     } catch (e) {
-      pushLog(`[shutdown_browser 失败] ${e}`);
+      pushLog(t("run.logShutdownFailed", { err: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -248,19 +249,32 @@ export default function RunPage() {
     // 复制当前日志面板缓冲到剪贴板——用户自己粘给作者 / 贴 issues，绝不自动发送。
     try {
       await navigator.clipboard.writeText(logs.join("\n"));
-      setCopyMsg("✓ 已复制日志，粘贴给作者或贴到 issues 即可");
+      setCopyMsg(t("run.copyOk"));
     } catch {
-      setCopyMsg("复制失败 —— 日志就在下面面板，可手动全选复制");
+      setCopyMsg(t("run.copyFail"));
     }
     setTimeout(() => setCopyMsg(null), 4000);
+  }
+
+  // 「复制信息去问 AI」：跟 header 那个同源——app 上下文 + 实时日志打包成求助文本。
+  // 出错时这里给一个就近入口，用户不用回到 header 找。
+  async function copyAiHelp() {
+    try {
+      const { text } = await ipc.getAiHelpReport(logs);
+      await navigator.clipboard.writeText(text);
+      setCopyMsg(t("askai.ok"));
+    } catch {
+      setCopyMsg(t("askai.fail"));
+    }
+    setTimeout(() => setCopyMsg(null), 6000);
   }
 
   // 状态副标题：替代原本的右侧 idle/running 小字
   const statusLine = running
     ? currentIndex !== null
-      ? `Running · 当前 job #${currentIndex}`
-      : "Running · 启动中"
-    : "Idle";
+      ? t("run.statusRunningJob", { index: currentIndex })
+      : t("run.statusStarting")
+    : t("run.statusIdle");
 
   return (
     <div className="space-y-10">
@@ -268,12 +282,12 @@ export default function RunPage() {
       <section className="flex items-end justify-between gap-6 pb-4 border-b-2 border-[var(--ink)]">
         <div>
           <h2 className="font-serif text-5xl leading-none tracking-tight">
-            运行 <span className="italic font-normal">/ Run</span>
+            {t("run.title")}
           </h2>
-          <p className="mono-tag mt-3">填表 → 开始 → 看着它打招呼</p>
+          <p className="mono-tag mt-3">{t("run.subtitle")}</p>
         </div>
         <div className="text-right">
-          <span className="mono-tag block">Status</span>
+          <span className="mono-tag block">{t("run.status")}</span>
           <span
             className={[
               "font-mono text-sm uppercase tracking-widest mt-1 inline-block px-2 py-1",
@@ -290,51 +304,51 @@ export default function RunPage() {
       {/* === 段落 2：参数表单 === */}
       <section>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
-          <Field label="你的名字（招呼语署名）" hint="Required">
+          <Field label={t("run.fieldName")} hint={t("run.hintRequired")}>
             <input
               type="text"
               value={usrName}
               onChange={(e) => setFormState({ formUsrName: e.target.value })}
               disabled={running}
               className="field-input"
-              placeholder="必填，会出现在招呼语末尾"
+              placeholder={t("run.fieldNamePlaceholder")}
             />
           </Field>
 
-          <Field label="求职 tag" hint="Optional">
+          <Field label={t("run.fieldLabel")} hint={t("run.hintOptional")}>
             <input
               type="text"
               value={label}
               onChange={(e) => setFormState({ formLabel: e.target.value })}
               disabled={running}
               className="field-input"
-              placeholder="留空走 BOSS 推荐 feed"
+              placeholder={t("run.fieldLabelPlaceholder")}
             />
           </Field>
 
-          <Field label="AI 端点" hint="在「配置」tab 设">
+          <Field label={t("run.fieldEndpoint")} hint={t("run.hintSetInConfig")}>
             {llmError ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
                 <span className="badge-outline mr-2">ERROR</span>
-                读取失败：{llmError}
+                {t("run.llmReadFailed", { err: llmError })}
               </div>
             ) : !llmCfg || !llmCfg.hasKey ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
-                <span className="badge-invert mr-2">No Key</span>
-                去「配置」tab 选端点并填 API key
+                <span className="badge-invert mr-2">{t("run.noKey")}</span>
+                {t("run.goConfigForKey")}
               </div>
             ) : (
               // 只读展示：端点 + model 在配置页设，这里不再有下拉
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)] flex items-center gap-2 flex-wrap">
-                <span className="badge-invert">{llmCfg.model || "（未填 model）"}</span>
+                <span className="badge-invert">{llmCfg.model || t("run.noModelTag")}</span>
                 <span className="text-[var(--muted-fg)] text-xs break-all">
-                  {llmCfg.baseUrl || "OpenAI 默认端点"}
+                  {llmCfg.baseUrl || t("run.defaultEndpoint")}
                 </span>
               </div>
             )}
           </Field>
 
-          <Field label="Dry Run">
+          <Field label={t("run.fieldDryRun")}>
             <label className="inline-flex items-center gap-3 text-sm cursor-pointer py-2">
               {/* 自定义 checkbox：黑边方块，选中后填充黑色 */}
               <span
@@ -356,7 +370,7 @@ export default function RunPage() {
                 <span className="text-xs font-bold leading-none">×</span>
               </span>
               <span className="font-mono uppercase tracking-widest text-xs">
-                只生成不发送（推荐先 dry run 一次）
+                {t("run.dryRunDesc")}
               </span>
             </label>
           </Field>
@@ -366,9 +380,9 @@ export default function RunPage() {
       {/* === 段落 2.5：简历拖拽上传 === */}
       <section>
         <div className="flex items-baseline justify-between">
-          <label className="field-label">简历 PDF</label>
+          <label className="field-label">{t("run.fieldResume")}</label>
           <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-fg)] italic">
-            Required · 拖入或选择
+            {t("run.resumeHint")}
           </span>
         </div>
         {/* 隐藏的原生文件选择器：拖拽之外的另一条上传路径 */}
@@ -394,27 +408,27 @@ export default function RunPage() {
           ].join(" ")}
         >
           {resumeBusy ? (
-            <p className="font-mono text-sm">上传中…</p>
+            <p className="font-mono text-sm">{t("run.uploading")}</p>
           ) : resume ? (
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <span className="font-mono text-sm">
-                <span className="mr-2">■</span>当前简历：{resume.filename}
+                <span className="mr-2">■</span>{t("run.currentResume", { filename: resume.filename })}
               </span>
               <div className="flex items-center gap-3 flex-wrap">
-                <span className="mono-tag">拖入新 PDF 可替换，或</span>
+                <span className="mono-tag">{t("run.replaceHint")}</span>
                 <PickFileButton onPick={() => fileInputRef.current?.click()} disabled={running} />
               </div>
             </div>
           ) : (
             <>
               <p className="font-mono text-sm">
-                <span className="mr-2">⤓</span>把简历 PDF 拖进来，或点这里打开文件浏览器 —— 上传一次，之后不用再传
+                <span className="mr-2">⤓</span>{t("run.dropPrompt")}
               </p>
               <div className="mt-3 flex items-center gap-3 flex-wrap">
                 <PickFileButton onPick={() => fileInputRef.current?.click()} disabled={running} />
               </div>
               <p className="mt-2 text-xs font-mono text-[var(--muted-fg)] italic">
-                没设置简历时点「开始」会直接报错。
+                {t("run.noResumeWarn")}
               </p>
             </>
           )}
@@ -435,27 +449,27 @@ export default function RunPage() {
             disabled={running || busy}
             className="btn"
           >
-            开始 <span className="ml-1">→</span>
+            {t("btn.start")} <span className="ml-1">→</span>
           </button>
           <button
             onClick={handleStop}
             disabled={!running || busy}
             className="btn-outline"
           >
-            ▌ 停止
+            {t("btn.stop")}
           </button>
           <button
             onClick={handleReset}
             disabled={running || busy}
             className="btn-ghost"
           >
-            重置 Chrome
+            {t("btn.resetChrome")}
           </button>
         </div>
         {/* 开始前校验未过：内联报错（替代原生 alert），点哪个字段缺一目了然 */}
         {startError && (
           <div className="mt-4 border-2 border-[var(--ink)] p-3 flex items-start gap-3">
-            <span className="badge-invert flex-shrink-0">检查</span>
+            <span className="badge-invert flex-shrink-0">{t("run.checkBadge")}</span>
             <span className="text-sm font-mono">{startError}</span>
           </div>
         )}
@@ -465,21 +479,24 @@ export default function RunPage() {
       {hasError && (
         <section className="border-2 border-[var(--ink)] p-5 space-y-3">
           <div className="flex items-center gap-3">
-            <span className="badge-invert">▌ 出问题了？</span>
+            <span className="badge-invert">{t("run.errorTitle")}</span>
             <span className="text-sm font-serif italic text-[var(--muted-fg)]">
-              复制日志贴给作者，或贴到 issues —— 不会自动发送任何东西。
+              {t("run.errorDesc")}
             </span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
+            <button type="button" onClick={copyAiHelp} className="btn text-xs">
+              {t("askai.btn")}
+            </button>
             <button type="button" onClick={copyLogs} className="btn-outline text-xs">
-              复制日志
+              {t("btn.copyLogs")}
             </button>
             <button
               type="button"
               onClick={() => ipc.openIssuesPage().catch(() => {})}
               className="btn-outline text-xs"
             >
-              打开 issues ↗
+              {t("btn.openIssues")}
             </button>
             {copyMsg && (
               <span className="text-xs font-mono text-[var(--muted-fg)]">{copyMsg}</span>
@@ -487,7 +504,7 @@ export default function RunPage() {
           </div>
           {logPaths && (
             <p className="text-xs font-mono text-[var(--muted-fg)] break-all">
-              日志文件夹：{logPaths.dir}
+              {t("run.logDir", { dir: logPaths.dir })}
               <button
                 type="button"
                 onClick={() =>
@@ -495,7 +512,7 @@ export default function RunPage() {
                 }
                 className="ml-2 underline underline-offset-2 hover:opacity-70"
               >
-                复制路径
+                {t("btn.copyPath")}
               </button>
             </p>
           )}
@@ -504,14 +521,14 @@ export default function RunPage() {
 
       {/* === 段落 4：双面板 === */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-0 border-2 border-[var(--ink)]">
-        <Panel title="Progress · 进度事件" rightDivider>
+        <Panel title={t("run.panelProgress")} rightDivider>
           <div
             ref={eventsScrollRef}
             className="text-xs font-mono h-80 overflow-y-auto"
           >
             {events.length === 0 ? (
               <div className="text-[var(--muted-fg)] italic">
-                还没事件 ——
+                {t("run.noEvents")}
               </div>
             ) : (
               events.map((ev, i) => <EventRow key={i} ev={ev} />)
@@ -519,14 +536,14 @@ export default function RunPage() {
           </div>
         </Panel>
 
-        <Panel title="Log · 日志">
+        <Panel title={t("run.panelLog")}>
           {/* 日志区：黑底白字反色块，强化 monochrome 对比 */}
           <pre
             ref={logScrollRef}
             className="bg-[var(--ink)] text-[var(--paper)] p-4 text-xs font-mono h-80 overflow-y-auto whitespace-pre-wrap leading-relaxed"
           >
             {logs.length === 0 ? (
-              <span className="opacity-50 italic">还没日志</span>
+              <span className="opacity-50 italic">{t("run.noLogs")}</span>
             ) : (
               logs.join("\n")
             )}
@@ -540,6 +557,7 @@ export default function RunPage() {
 // 简历上传的「选择文件…」按钮——有/无简历两个分支共用，避免两处改一处漏。
 // stopPropagation 是因为它常嵌在可点击的虚线框里，别冒泡再触发一次 picker。
 function PickFileButton({ onPick, disabled }: { onPick: () => void; disabled: boolean }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -550,7 +568,7 @@ function PickFileButton({ onPick, disabled }: { onPick: () => void; disabled: bo
       disabled={disabled}
       className="btn-outline text-xs"
     >
-      选择文件…
+      {t("btn.pickFile")}
     </button>
   );
 }

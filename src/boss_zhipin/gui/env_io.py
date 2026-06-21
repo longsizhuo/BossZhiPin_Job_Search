@@ -48,11 +48,15 @@ def _env_path() -> Path:
     return Path(".env")
 
 
-# 写白名单 = 通用表单字段 ∪ LLM 端点三件套。后者不渲染成通用框，但要能写，
-# 所以并进来。其余任何 key 一律拒写（防注入）。
+# UI 语言（zh / en）。由 Config 顶部的语言下拉管，不渲染成通用裸框，所以不进
+# KNOWN_KEYS；但 env key 本身要可写，并进下面的 _ALLOWED_KEYS。
+LANG_ENV = "BOSS_LANG"
+
+# 写白名单 = 通用表单字段 ∪ LLM 端点三件套 ∪ UI 语言。后三者不渲染成通用框，
+# 但要能写，所以并进来。其余任何 key 一律拒写（防注入）。
 _ALLOWED_KEYS: frozenset[str] = (
     frozenset(k for k, _, _ in KNOWN_KEYS)
-    | {LLM_API_KEY_ENV, LLM_BASE_URL_ENV, LLM_MODEL_ENV}
+    | {LLM_API_KEY_ENV, LLM_BASE_URL_ENV, LLM_MODEL_ENV, LANG_ENV}
 )
 
 
@@ -97,6 +101,30 @@ def write_env(updates: dict[str, str]) -> None:
 
 
 def field_meta() -> list[dict[str, str | bool]]:
-    """给前端的 fields metadata（key / label / is_secret）。"""
+    """给前端的 fields metadata（key / label / is_secret）。
+
+    label 仅作为前端拿不到翻译时的回退——前端 Config 现按 key 自己渲染本地化
+    标签（见 tauri-ui/src/lib/i18n.ts 的 ``field.*``）。
+    """
     return [{"key": k, "label": label, "isSecret": is_secret}
             for k, label, is_secret in KNOWN_KEYS]
+
+
+def read_language() -> str:
+    """返回 .env 里存的 UI 语言（``BOSS_LANG``），没设过返回空字符串。
+
+    os.environ 优先、回退 .env 文件——跟 LLM 配置同理，GUI 早期 env 可能还没
+    load。前端拿到空字符串时用系统 locale 探测的默认。
+    """
+    val = os.getenv(LANG_ENV)
+    if val:
+        return val
+    path = _env_path()
+    if not path.is_file():
+        return ""
+    return dotenv_values(path).get(LANG_ENV) or ""
+
+
+def write_language(lang: str) -> None:
+    """存 UI 语言到 .env + 同步 os.environ（即时生效，无需重启）。"""
+    write_env({LANG_ENV: lang})

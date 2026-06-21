@@ -1,6 +1,6 @@
 ---
 name: boss-zhipin-onboarding
-description: 帮助新手把 BossZhiPin_Job_Search 这个 BOSS 直聘自动打招呼脚本跑起来。覆盖两种用户路径——(A) 直接下载桌面 App（.app / .dmg / .exe）的非开发者，常见症状："Gatekeeper 拦"、"双击没反应"、".app 闪退"、"GUI 里配 API key"；以及 (B) clone 源码 + uv 跑命令行的开发者，常见症状："uv 命令找不到"、"扫码扫不上"、"Chrome 起来空白"、"卡在哪一步"。当用户提到 BossZhiPin_Job_Search、BOSS 直聘脚本、自动招呼语、my_cover.pdf、chrome_profile、DEEPSEEK_API_KEY、Tauri、DMG 安装、PyTauri 等本项目特有概念，或者明显在按 README 走但被某一步卡住时，主动使用此 skill。即使用户没有明说"帮我装"，只要场景对得上就用。
+description: 帮助新手把 BossZhiPin_Job_Search 这个 BOSS 直聘自动打招呼脚本跑起来。覆盖两种用户路径——(A) 直接下载桌面 App（.app / .dmg / .exe）的非开发者，常见症状："Gatekeeper 拦"、"双击没反应"、".app 闪退"、"GUI 里配 API key"、"界面中英文怎么切"、"用不明白想让 AI 看看状态（「问 AI 帮忙」按钮）"；以及 (B) clone 源码 + uv 跑命令行的开发者，常见症状："uv 命令找不到"、"扫码扫不上"、"Chrome 起来空白"、"卡在哪一步"。当用户提到 BossZhiPin_Job_Search、BOSS 直聘脚本、自动招呼语、my_cover.pdf、chrome_profile、DEEPSEEK_API_KEY、Tauri、DMG 安装、PyTauri 等本项目特有概念，或者明显在按 README 走但被某一步卡住时，主动使用此 skill。即使用户没有明说"帮我装"，只要场景对得上就用。
 ---
 
 # BossZhiPin_Job_Search 新手上手 skill
@@ -103,6 +103,10 @@ bash .claude/skills/boss-zhipin-onboarding/scripts/fetch-latest-app.sh
 - `LLM_API_KEY` 字段是 password 输入框（显示成圆点），不会泄露
 - 点"保存"——会写到本地数据目录的 `.env`，下次启动自动加载
 
+> **界面语言**：配置页顶部有「界面语言 · Language」下拉，中文 / English 即时切换、
+> 无需重启，存进 `.env` 的 `BOSS_LANG`。用户嫌界面是英文看不懂、或想要英文界面时，
+> 让他在这里切。整套 UI 文案 + 后端回传的报错都跟着这个语言走。
+
 **关键决策：他没有 API key 怎么办？**
 
 下拉里有 DeepSeek / OpenAI / Claude / 通义千问·百炼 / 智谱GLM / 豆包 / Kimi / MiniMax / 硅基流动 / 本地Ollama 等预设。按"推荐顺序"问他想用哪个：
@@ -137,6 +141,19 @@ bash .claude/skills/boss-zhipin-onboarding/scripts/fetch-latest-app.sh
 
 **首次扫码后 cookie 会落在用户数据目录的 chrome_profile/**，下次启动免扫。
 
+### A 调试：卡住时第一步——让用户「问 AI 帮忙」
+
+App 用户多半零基础、说不清问题。**别上来连环问"你版本多少 / key 配了吗 / 报什么错"**
+——让他点 App **右上角的「🆘 复制Log问AI」按钮**（运行页出错卡片里也有同款「复制信息
+去问 AI」），然后把复制到的内容**整段粘给你**。
+
+那段文本自带：app 介绍 + 版本 + 系统 + 配置体检（有没有配 key / model / 简历，**绝不
+含 key 明文**）+ 最近运行日志。你拿到就能直接对上号、定位问题，比一问一答快得多。
+
+> 这也是给"在网页版 ChatGPT / Claude 里求助、手上没有 repo / 没有这个 skill"的用户
+> 兜底的入口——他把那段粘到任意 AI，对方都能对上号。**所以遇到这类粘贴进来的报告，
+> 直接读「最近日志」段 + 配置体检来判断**。
+
 ### A 常见问题
 
 | 症状 | 解决 |
@@ -151,6 +168,8 @@ bash .claude/skills/boss-zhipin-onboarding/scripts/fetch-latest-app.sh
 | 弹出的 Chrome **跟我日常 Chrome 不一样** | **这是预期**——独立 profile 跟日常 Chrome 隔离。不影响登录，放心扫码 |
 | 扫码 **5 分钟没反应** | Chrome 里手动看一下是不是已经登录了，登录态检测可能延迟。或者关掉 Chrome 让 App 重启 |
 | **历史 tab 是空的** | 还没跑出过任何招呼语；或者 DRY-RUN 跑过但 `letters.jsonl` 路径不在 App 数据目录。先重跑一次 DRY-RUN |
+| **说不清问题 / 报错看不懂 / 想让你看状态** | 让他点右上角「🆘 复制Log问AI」把状态整段粘给你（含版本 / 配置体检 / 最近日志，**不含 key 明文**），你据此判断（见上「A 调试」） |
+| **界面是英文看不懂 / 想切语言** | 配置页顶部「界面语言 · Language」下拉切中文 / English，即时生效 |
 
 ### A 之后想理解原理 / 找文档
 
@@ -185,6 +204,16 @@ bash .claude/skills/boss-zhipin-onboarding/scripts/check-env.sh
 脚本会把里程碑各自的 ✓ / ✗ 状态都打出来，最后告诉用户"下一步应该做什么"。比反复问"你装了 uv 吗？"、"你创建了 .env 吗？"快多了。
 
 **只有当用户还没 clone 项目 / 还没装 git / 还没装 uv 时，跳过诊断脚本**，直接从里程碑 1 开始引导。
+
+**已经 `uv sync` 过的话，还有一个配置体检利器**——拿到跟 GUI 右上角「🆘 复制Log问AI」
+按钮一样的报告（app 版本 + 系统 + LLM 端点/key/model/简历体检，**不含 key 明文**）：
+
+```bash
+uv run python -m boss_zhipin.diagnose
+```
+
+`check-env.sh` 看的是"里程碑装到哪一步"，`diagnose` 看的是"配置/运行状态对不对"，互补。
+CLI 没有 GUI 的实时日志缓冲，所以报告里"最近日志"段是空的——运行日志直接看终端输出。
 
 ## 各里程碑详细引导
 

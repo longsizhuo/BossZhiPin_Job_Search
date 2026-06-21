@@ -76,11 +76,13 @@ def store_resume(src: str) -> dict[str, str]:
     返回 ``{"filename": ..., "path": ...}``（path 是绝对路径）。
     校验失败抛 ``ValueError``，前端 catch 后提示用户。
     """
+    from boss_zhipin.gui.i18n import msg
+
     src_path = Path(src.strip()).expanduser()
     if not src_path.is_file():
-        raise ValueError(f"文件不存在：{src}")
+        raise ValueError(msg("resume.not_found", src=src))
     if not _is_readable_pdf(src_path):
-        raise ValueError("不是一个能读取的 PDF（需要 .pdf 且至少一页）")
+        raise ValueError(msg("resume.not_readable_pdf"))
 
     dest_dir = Path(RESUME_DIR)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -104,13 +106,15 @@ def store_resume_bytes(filename: str, data: bytes) -> dict[str, str]:
 
     返回 ``{"filename": ..., "path": ...}``（path 绝对）。校验失败抛 ``ValueError``。
     """
+    from boss_zhipin.gui.i18n import msg
+
     name = Path(filename).name  # 只取 basename，挡掉路径穿越（如 "../../x.pdf"）
     # 用 Path.suffix 跟拖拽路径（store_resume → _is_readable_pdf）保持一致口径：
     # 无扩展点的 "pdf" 这种在 suffix 下是 "" → 拒，避免两条入口判定不一致。
     if Path(name).suffix.lower() != ".pdf":
-        raise ValueError("不是一个 PDF 文件（需要 .pdf）")
+        raise ValueError(msg("resume.not_pdf"))
     if not data:
-        raise ValueError("文件是空的")
+        raise ValueError(msg("resume.empty"))
 
     dest_dir = Path(RESUME_DIR)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -122,7 +126,7 @@ def store_resume_bytes(filename: str, data: bytes) -> dict[str, str]:
     tmp.write_bytes(data)
     if not _pdf_has_pages(tmp):
         tmp.unlink(missing_ok=True)
-        raise ValueError("不是一个能读取的 PDF（需要 .pdf 且至少一页）")
+        raise ValueError(msg("resume.not_readable_pdf"))
     tmp.replace(dest)
 
     abs_path = str(dest)

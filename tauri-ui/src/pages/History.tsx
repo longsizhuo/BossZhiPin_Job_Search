@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ipc, type LetterRecord, type TelemetrySummary } from "../lib/ipc";
+import { useT } from "../store";
 
 // 历史页：editorial 表格
 // monochrome 设计：
@@ -12,6 +13,7 @@ export default function HistoryPage() {
   const [summary, setSummary] = useState<TelemetrySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   useEffect(() => {
     refresh();
@@ -40,10 +42,10 @@ export default function HistoryPage() {
       <section className="flex items-end justify-between gap-6 pb-4 border-b-2 border-[var(--ink)]">
         <div>
           <h2 className="font-serif text-5xl leading-none tracking-tight">
-            历史 <span className="italic font-normal">/ History</span>
+            {t("history.title")}
           </h2>
           <p className="mono-tag mt-3">
-            最近的招呼语 · 调用成本汇总
+            {t("history.subtitle")}
           </p>
         </div>
         <button
@@ -51,7 +53,7 @@ export default function HistoryPage() {
           disabled={loading}
           className="btn-outline"
         >
-          {loading ? "..." : "刷新 ↻"}
+          {loading ? "..." : t("btn.refresh")}
         </button>
       </section>
 
@@ -71,17 +73,17 @@ export default function HistoryPage() {
       {/* === 招呼语表格 === */}
       <section>
         <h3 className="mono-tag mb-3 text-[var(--ink)]">
-          Letters · 招呼语日志
+          {t("history.lettersHeading")}
         </h3>
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b-4 border-[var(--ink)]">
-              <Th>时间 · Time</Th>
+              <Th>{t("history.thTime")}</Th>
               <Th>Provider</Th>
               <Th>Model</Th>
-              <Th align="center">校验</Th>
-              <Th align="center">发送</Th>
-              <Th>招呼语 · Letter</Th>
+              <Th align="center">{t("history.thValidation")}</Th>
+              <Th align="center">{t("history.thSent")}</Th>
+              <Th>{t("history.thLetter")}</Th>
             </tr>
           </thead>
           <tbody>
@@ -91,9 +93,7 @@ export default function HistoryPage() {
                   colSpan={6}
                   className="px-3 py-12 text-center font-serif italic text-[var(--muted-fg)]"
                 >
-                  {loading
-                    ? "Loading..."
-                    : "logs/letters.jsonl 是空的 —— 还没生成过招呼语"}
+                  {loading ? t("common.loading") : t("history.empty")}
                 </td>
               </tr>
             ) : (
@@ -126,27 +126,28 @@ function Th({
 }
 
 function CostSummary({ summary }: { summary: TelemetrySummary }) {
+  const t = useT();
   const providers = Object.entries(summary.by_provider);
   return (
     <section className="border-2 border-[var(--ink)] p-6">
       <h3 className="mono-tag mb-5 text-[var(--ink)]">
-        LLM Cost · 最近 1000 次
+        {t("history.costHeading")}
       </h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-6">
         <Stat
-          label="总调用次数"
+          label={t("history.statTotalCalls")}
           value={summary.total_calls.toString()}
           emphasis
         />
         <Stat
-          label="总成本 (¥)"
+          label={t("history.statTotalCost")}
           value={summary.total_cost_cny.toFixed(4)}
           emphasis
         />
         {providers.map(([provider, s]) => (
           <Stat
             key={provider}
-            label={`${provider} · ${s.calls} 次`}
+            label={t("history.statProviderCalls", { provider, calls: s.calls })}
             value={`¥ ${s.cost_cny.toFixed(4)}`}
             sub={`in: ${s.input_tokens}  out: ${s.output_tokens}`}
           />
@@ -185,6 +186,7 @@ function Stat({
 
 function LetterRow({ l }: { l: LetterRecord }) {
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
   const time = new Date(l.ts).toLocaleString();
 
   return (
@@ -240,7 +242,7 @@ function LetterRow({ l }: { l: LetterRecord }) {
             <div className="space-y-3">
               <div>
                 <span className="mono-tag block mb-1">
-                  JD Preview · 岗位预览
+                  {t("history.jdPreview")}
                 </span>
                 <p className="text-sm font-serif leading-relaxed text-[var(--ink)]">
                   {l.job_description.slice(0, 300)}

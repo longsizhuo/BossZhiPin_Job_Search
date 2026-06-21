@@ -139,14 +139,16 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
     - 找不到简历 → ``ValueError``
     - 没配 LLM key / model → ``ValueError``
     """
+    from boss_zhipin.gui.i18n import msg
+
     if runner.is_running():
-        raise RuntimeError("already running")
+        raise RuntimeError(msg("err.already_running"))
 
     # 名字非空前置校验：usr_name 会作为招呼语署名直接传给业务代码，空字符串会
     # 让招呼语署名为空。跟简历校验一样在这里同步抛 ValueError，前端 catch 后
     # 秒级可见，而不是等跑起来才发现署名空了。
     if not body.config.usr_name.strip():
-        raise ValueError("请先在「运行」页填写你的名字（招呼语署名用）")
+        raise ValueError(msg("err.need_name"))
 
     # 简历存在性前置校验：不查的话，缺简历会等 cli import（torch，~10s）跑完才在
     # run_provider 深处抛 FileNotFoundError，只剩 Progress 面板一行容易错过的
@@ -157,9 +159,7 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
     from boss_zhipin.gui.resume_io import current_resume
 
     if current_resume() is None:
-        raise ValueError(
-            "找不到简历 PDF —— 在「运行」页把简历 PDF 拖进来（或在 .env 设 RESUME_PATH）"
-        )
+        raise ValueError(msg("err.need_resume"))
 
     # LLM 端点前置校验：缺 key 或缺 model 跑起来都会在 _build_client 深处抛
     # RuntimeError——而主循环的 except 会把它当一次性错误 break 掉整个 run（第一个
@@ -169,13 +169,9 @@ async def start_run(body: StartRunBody, webview_window: WebviewWindow) -> dict[s
 
     llm_cfg = read_llm_config()
     if not llm_cfg["hasKey"]:
-        raise ValueError(
-            "还没配 AI —— 去「配置」tab 选个服务商（或自定义端点）并填 API key"
-        )
+        raise ValueError(msg("err.need_ai"))
     if not llm_cfg["model"]:
-        raise ValueError(
-            "还没填模型（model）—— 去「配置」tab 选个预设会自动填，或手填 LLM_MODEL"
-        )
+        raise ValueError(msg("err.need_model"))
 
     progress_channel = body.progress_channel.channel_on(webview_window.as_ref_webview())
     log_channel = body.log_channel.channel_on(webview_window.as_ref_webview())
@@ -284,6 +280,29 @@ async def write_env_fields(body: WriteEnvBody) -> dict[str, str]:
     """把表单的修改写回 .env。"""
     from boss_zhipin.gui.env_io import write_env
     write_env(body.updates)
+    return {"status": "saved"}
+
+
+# ---------- Config 面板：UI 语言 ----------
+
+
+@commands.command()
+async def get_language() -> dict[str, str]:
+    """返回存的 UI 语言（``{lang}``）。没设过返回空字符串，前端用系统探测的默认。"""
+    from boss_zhipin.gui.env_io import read_language
+    return {"lang": read_language()}
+
+
+class _LanguageBody(_CamelModel):
+    lang: str
+
+
+@commands.command()
+async def set_language(body: _LanguageBody) -> dict[str, str]:
+    """存 UI 语言到 .env。只接受已知值（zh / en），其余忽略防注入。"""
+    from boss_zhipin.gui.env_io import write_language
+    if body.lang in ("zh", "en"):
+        write_language(body.lang)
     return {"status": "saved"}
 
 
@@ -403,6 +422,21 @@ async def open_issues_page() -> dict[str, str]:
 
     webbrowser.open(f"https://github.com/{REPO}/issues/new")
     return {"status": "opened"}
+
+
+class _AiHelpBody(_CamelModel):
+    logs: list[str] = []  # 前端实时日志缓冲（store.logs），可空
+
+
+@commands.command()
+async def get_ai_help_report(body: _AiHelpBody) -> dict[str, str]:
+    """「复制信息去问 AI」用——返回一段自带上下文的求助 markdown。
+
+    把 app 介绍 + 版本/系统/配置体检 + 文档链接 + 最近日志打包，前端复制到剪贴板，
+    用户粘到任意聊天 AI 就能对上号、拿到针对性帮助。绝不含 API key 明文。
+    """
+    from boss_zhipin.gui.diagnostics import build_ai_help
+    return {"text": build_ai_help(body.logs)}
 
 
 @commands.command()

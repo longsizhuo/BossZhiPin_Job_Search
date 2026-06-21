@@ -62,3 +62,24 @@ class TestReadEnv:
 
     def test_missing_file_returns_empty(self, in_tmp_cwd):
         assert env_io.read_env() == {}
+
+
+class TestLanguage:
+    def test_round_trip(self, in_tmp_cwd, monkeypatch):
+        monkeypatch.delenv(env_io.LANG_ENV, raising=False)
+        env_io.write_language("en")
+        # 既落盘也即时进 os.environ（无需重启 App）
+        assert f"{env_io.LANG_ENV}=en" in (in_tmp_cwd / ".env").read_text()
+        assert os.getenv(env_io.LANG_ENV) == "en"
+        assert env_io.read_language() == "en"
+
+    def test_unset_returns_empty(self, in_tmp_cwd, monkeypatch):
+        # 没设过 → 空字符串，前端据此回退到系统探测的默认
+        monkeypatch.delenv(env_io.LANG_ENV, raising=False)
+        assert env_io.read_language() == ""
+
+    def test_reads_from_file_when_not_in_environ(self, in_tmp_cwd, monkeypatch):
+        # 写完把 environ 抹掉，模拟 GUI 早期 env 还没 load——应回退读 .env 文件
+        env_io.write_language("zh")
+        monkeypatch.delenv(env_io.LANG_ENV, raising=False)
+        assert env_io.read_language() == "zh"
