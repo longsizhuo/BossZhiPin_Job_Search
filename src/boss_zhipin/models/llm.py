@@ -71,6 +71,16 @@ def _provider_label(base_url: str | None) -> str:
     return "custom"
 
 
+def current_provider_label() -> str:
+    """从当前 ``LLM_BASE_URL`` 推 telemetry 短标签——三处 telemetry 调用的统一入口。
+
+    收敛掉散落在 llm / job_matcher / write_response 里的同一段
+    ``_provider_label(os.getenv("LLM_BASE_URL", "").strip() or None)`` copy-paste，
+    避免某一处漏改导致 ``by_provider`` 分组对不上（曾经就这么错过一次）。
+    """
+    return _provider_label(os.getenv("LLM_BASE_URL", "").strip() or None)
+
+
 # 把真正调远端的那一步拆出来，方便单测时整体替换或局部 mock
 @retry_with_backoff()
 def _call_chat_completion(client: OpenAI, **kwargs):
@@ -97,7 +107,7 @@ def generate_letter(
     失败时 telemetry 也会记一行 ``ok=False, error=str(e)``，然后异常向上抛。
     """
     client, llm_model = _build_client()
-    provider_label = _provider_label(os.getenv("LLM_BASE_URL", "").strip() or None)
+    provider_label = current_provider_label()
 
     relevant_chunks = vectorstore.search(job_description, k=4)
     resume_context = "\n\n".join(relevant_chunks)

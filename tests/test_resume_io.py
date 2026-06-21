@@ -78,6 +78,47 @@ class TestStoreResume:
             resume_io.store_resume(str(fake))
 
 
+class TestStoreResumeBytes:
+    """文件选择器路径：webview 给不到真实路径，只能传字节。"""
+
+    def _pdf_bytes(self, tmp_path) -> bytes:
+        return (tmp_path / "src.pdf").read_bytes() if (tmp_path / "src.pdf").is_file() \
+            else open(_make_pdf(tmp_path / "src.pdf"), "rb").read()
+
+    def test_writes_into_resume_dir_and_persists(self, in_tmp_cwd):
+        data = self._pdf_bytes(in_tmp_cwd)
+        info = resume_io.store_resume_bytes("cv.pdf", data)
+
+        dest = in_tmp_cwd / "resume" / "cv.pdf"
+        assert dest.is_file()
+        assert info["filename"] == "cv.pdf"
+        assert os.path.samefile(info["path"], dest)
+        assert os.getenv("RESUME_PATH") == info["path"]
+        assert os.path.isabs(info["path"])
+
+    def test_strips_path_components_from_filename(self, in_tmp_cwd):
+        """文件名里带目录（路径穿越尝试）只取 basename，不逃出 resume/。"""
+        data = self._pdf_bytes(in_tmp_cwd)
+        info = resume_io.store_resume_bytes("../../evil.pdf", data)
+        assert info["filename"] == "evil.pdf"
+        assert (in_tmp_cwd / "resume" / "evil.pdf").is_file()
+        assert not (in_tmp_cwd.parent.parent / "evil.pdf").exists()
+
+    def test_rejects_non_pdf_name(self, in_tmp_cwd):
+        with pytest.raises(ValueError):
+            resume_io.store_resume_bytes("notes.txt", b"%PDF-1.4 ...")
+
+    def test_rejects_empty(self, in_tmp_cwd):
+        with pytest.raises(ValueError):
+            resume_io.store_resume_bytes("cv.pdf", b"")
+
+    def test_rejects_pdf_name_but_garbage_bytes(self, in_tmp_cwd):
+        with pytest.raises(ValueError):
+            resume_io.store_resume_bytes("cv.pdf", b"totally not a pdf")
+        # 坏内容不能留下半个文件当成当前简历
+        assert not (in_tmp_cwd / "resume" / "cv.pdf").exists()
+
+
 class TestCurrentResume:
     def test_none_when_nothing_set(self, in_tmp_cwd):
         assert resume_io.current_resume() is None

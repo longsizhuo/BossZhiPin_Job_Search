@@ -101,3 +101,33 @@ class TestGetLabel:
     def test_whitespace_stripped(self, monkeypatch):
         monkeypatch.setenv("BOSS_LABEL", "   测试岗位   ")
         assert main.get_label() == "测试岗位"
+
+
+# ---------- _int_env ----------
+# GUI 配置页能直接填 BOSS_MIN_MATCH_SCORE 这类数值字段，裸 int() 遇到坏值会崩整个
+# run。_int_env 把坏值 / 越界降级到区间内，永不抛——跑得起来比跑得精确重要。
+
+class TestIntEnv:
+    def test_unset_returns_default(self, monkeypatch):
+        monkeypatch.delenv("BOSS_MIN_MATCH_SCORE", raising=False)
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 50
+
+    def test_valid_in_range(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "73")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 73
+
+    def test_non_integer_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "abc")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 50
+
+    def test_empty_string_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "   ")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 50
+
+    def test_above_range_clamped_to_hi(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "150")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 100
+
+    def test_below_range_clamped_to_lo(self, monkeypatch):
+        monkeypatch.setenv("BOSS_MIN_MATCH_SCORE", "-20")
+        assert main._int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100) == 0

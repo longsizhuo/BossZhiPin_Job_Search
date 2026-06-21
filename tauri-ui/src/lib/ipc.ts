@@ -98,6 +98,9 @@ export const ipc = {
   // 简历：set_resume 把拖入的 PDF 复制进 app 数据目录的 resume/；get_resume 读回当前简历。
   setResume: (path: string) =>
     pyInvoke<{ filename: string; path: string }>("set_resume", { path }),
+  // 文件选择器选的 PDF：webview 给不到真实路径，只能传字节（base64）。
+  setResumeBytes: (filename: string, dataBase64: string) =>
+    pyInvoke<{ filename: string; path: string }>("set_resume_bytes", { filename, dataBase64 }),
   getResume: () => pyInvoke<{ resume: ResumeInfo | null }>("get_resume", {}),
   getLetters: (limit: number = 200) =>
     pyInvoke<{ letters: LetterRecord[] }>("get_letters", { limit }),
@@ -109,6 +112,12 @@ export const ipc = {
   // 用系统浏览器打开下载页（后端做了 URL 白名单校验）。
   openReleasePage: (url: string) =>
     pyInvoke<{ status: string }>("open_release_page", { url }),
+  // 出错卡片：打开本仓库 issues（系统浏览器跳转，不自动上报任何日志）。
+  openIssuesPage: () =>
+    pyInvoke<{ status: string }>("open_issues_page", {}),
+  // 出错卡片：日志文件夹路径（让用户知道去哪手动捞日志）。
+  getLogDir: () =>
+    pyInvoke<{ dir: string; letters: string; telemetry: string }>("get_log_dir", {}),
 };
 
 // 检查更新返回：当前版本 / 最新版本 / 下载页 URL / 是否有新版。

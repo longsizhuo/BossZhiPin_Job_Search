@@ -25,6 +25,8 @@ export default function ConfigPage() {
   const [model, setModel] = useState("");
   // null = 用户没动 key 框（保存时不传 key，不覆盖已存的）
   const [keyEdit, setKeyEdit] = useState<string | null>(null);
+  // 明文/密文切换：粘贴 key 后能核对一眼，避免带错空格/漏字符跑到一半才报 401
+  const [showKey, setShowKey] = useState(false);
 
   useEffect(() => {
     refresh();
@@ -220,15 +222,33 @@ export default function ConfigPage() {
                     </p>
                   )}
                 </div>
-                <input
-                  type="password"
-                  value={keyEdit ?? ""}
-                  onChange={(e) => editKey(e.target.value)}
-                  className="field-input font-mono"
-                  placeholder={
-                    llmCfg.hasKey ? "已配置 · 留空保持不变，输入则覆盖" : "粘贴 API Key"
-                  }
-                />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type={showKey ? "text" : "password"}
+                      value={keyEdit ?? ""}
+                      onChange={(e) => editKey(e.target.value)}
+                      className="field-input font-mono flex-1"
+                      placeholder={
+                        llmCfg.hasKey ? "已配置 · 留空保持不变，输入则覆盖" : "粘贴 API Key"
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey((v) => !v)}
+                      className="btn-ghost text-xs flex-shrink-0"
+                      aria-label={showKey ? "隐藏 key" : "显示 key"}
+                    >
+                      {showKey ? "隐藏" : "显示"}
+                    </button>
+                  </div>
+                  {/* 选了预设但还没配 key：提示去填，别等点开始才发现没 key */}
+                  {selectedPreset && !llmCfg.hasKey && !keyEdit && (
+                    <p className="mt-2 text-xs font-mono text-[var(--muted-fg)] italic">
+                      选了 {selectedPreset.label}，记得在上面粘贴它的 API key 再保存。
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
           )}
