@@ -9,6 +9,7 @@ export type EventKind =
   | "login_ok"
   | "job_found"
   | "job_skipped"
+  | "scoring_degraded"
   | "letter_sent"
   | "feed_exhausted"
   | "loop_ended"
