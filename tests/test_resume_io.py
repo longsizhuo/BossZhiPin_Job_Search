@@ -108,6 +108,13 @@ class TestStoreResumeBytes:
         with pytest.raises(ValueError):
             resume_io.store_resume_bytes("notes.txt", b"%PDF-1.4 ...")
 
+    def test_rejects_dotless_pdf_name(self, in_tmp_cwd):
+        # 文件名恰好是 "pdf"（无扩展点）：拖拽路径用 Path.suffix 会拒，字节路径
+        # 也必须拒，两条入口口径一致，别落成无扩展名的 resume/pdf。
+        with pytest.raises(ValueError):
+            resume_io.store_resume_bytes("pdf", b"%PDF-1.4 whatever")
+        assert not (in_tmp_cwd / "resume" / "pdf").exists()
+
     def test_rejects_empty(self, in_tmp_cwd):
         with pytest.raises(ValueError):
             resume_io.store_resume_bytes("cv.pdf", b"")

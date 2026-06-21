@@ -232,8 +232,8 @@ async def shutdown_browser() -> dict[str, str]:
 async def get_llm_config() -> dict[str, object]:
     """返回端点选择器信息：``{baseUrl, model, hasKey, presets: [...]}``。
 
-    读 .env 文件（不是 os.environ）——GUI 启动时 env 还没 load，见
-    ``gui.llm_config`` 的说明。
+    真相源 os.environ 优先、回退 .env 文件（GUI 启动时 env 还没 load）——见
+    ``gui.llm_config.read_llm_config`` 的说明。
     """
     from boss_zhipin.gui.llm_config import read_llm_config
     return read_llm_config()

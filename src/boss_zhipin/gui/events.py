@@ -34,7 +34,7 @@ class ProgressEvent(BaseModel):
     """业务代码发给 GUI 的结构化事件。
 
     payload 是个 dict 而非每个 kind 一个子类，因为：
-    - 事件类型少（8 个）
+    - 事件类型少（个位数）
     - 前端用 switch/match 一处分发，子类反而要类型守卫
     - 加字段不破坏老代码
     """
