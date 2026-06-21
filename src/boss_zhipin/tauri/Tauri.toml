@@ -1,3 +1,12 @@
+# 这是 **wheel dev 模式** 读的 Tauri 配置（standalone 模式读的是
+# src-tauri/tauri.conf.json，编译期被 generate_context! 烧进 Rust binary）。
+# 两份是**同一个 App 的两种运行模式各一份**，不是冗余，删任何一份对应模式起不来。
+#
+# ⚠️ 共享字段（productName / identifier / 窗口 title·label·width·height·
+# minWidth·minHeight / withGlobalTauri）必须跟 src-tauri/tauri.conf.json **逐字一致**，
+# 改一份记得同步改另一份。version 例外：release 时 scripts/set_version.py 会从 git
+# tag 把两份一起覆盖，平时不用手动对齐。（tauri.conf.json 是 JSON 不能写注释，
+# 所以这条提醒只放这里。）
 "$schema" = "https://schema.tauri.app/config/2"
 productName = "BOSS Zhipin Helper"
 version = "0.4.1"

@@ -115,9 +115,15 @@ def _build_main_loop_factory(config: RunConfig):
         # 延迟 import，让没装 ``tauri`` 可选依赖时 import boss_zhipin.tauri 不立即炸。
         from boss_zhipin.cli import DEFAULT_RESUME_PATH, run_provider
 
-        # 同步到 env，业务代码深处读 env 的地方（DRY_RUN / RESUME_PATH 等）也能感知
+        # 同步到 env，业务代码深处读 env 的地方（DRY_RUN / RESUME_PATH 等）也能感知。
+        # DRY_RUN 必须**显式清掉**：os.environ 是进程级、跨 run 复用的。只设不清
+        # 的话，用户先勾 Dry-run 测一次留下 DRY_RUN=1，之后取消勾选真跑时，任何
+        # call-time 读 os.getenv("DRY_RUN") 的地方仍判为 dry-run → 招呼语只生成不
+        # 发送，且要重启 App 才好（非技术用户极难自查）。每次按当前勾选状态归位。
         if config.dry_run:
             environ["DRY_RUN"] = "1"
+        else:
+            environ.pop("DRY_RUN", None)
         environ["BOSS_USR_NAME"] = config.usr_name
         if config.resume_path:
             environ["RESUME_PATH"] = config.resume_path
