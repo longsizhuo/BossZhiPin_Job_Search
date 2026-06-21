@@ -79,22 +79,26 @@ elif [ ! -f ".env" ]; then
     echo "  ✗ .env 不存在。先 cp .env.example .env 然后编辑填入 API key"
 else
     echo "  ✓ .env 存在"
+    # 引擎统一读 LLM_API_KEY（任意 OpenAI 兼容端点），这是必填项
     found_key=""
-    for key in DEEPSEEK_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY; do
-        # 用 grep 而不是 source，避免 .env 里有奇怪字符导致 shell 出问题
-        value_line=$(grep -E "^${key}=" .env 2>/dev/null | head -1)
-        if [ -n "$value_line" ]; then
-            value=$(echo "$value_line" | sed -E "s/^${key}=//; s/^['\"]//; s/['\"]$//; s/^[[:space:]]+//; s/[[:space:]]+$//")
-            if [ -n "$value" ] && [ "$value" != "sk-xxxxxxxxxxxx" ] && [ "$value" != "sk-ant-xxxxxxxxxxxx" ]; then
-                echo "  ✓ $key 已填（长度 ${#value} 字符，开头 ${value:0:5}...）"
-                found_key="$key"
-            fi
+    key="LLM_API_KEY"
+    # 用 grep 而不是 source，避免 .env 里有奇怪字符导致 shell 出问题
+    value_line=$(grep -E "^${key}=" .env 2>/dev/null | head -1)
+    if [ -n "$value_line" ]; then
+        value=$(echo "$value_line" | sed -E "s/^${key}=//; s/^['\"]//; s/['\"]$//; s/^[[:space:]]+//; s/[[:space:]]+$//")
+        if [ -n "$value" ] && [ "$value" != "sk-xxxxxxxxxxxx" ] && [ "$value" != "sk-ant-xxxxxxxxxxxx" ]; then
+            echo "  ✓ $key 已填（长度 ${#value} 字符，开头 ${value:0:5}...）"
+            found_key="$key"
         fi
-    done
+    fi
     if [ -z "$found_key" ]; then
-        echo "  ✗ 三个 *_API_KEY 都没填。至少填一个（推荐 DEEPSEEK_API_KEY）"
+        echo "  ✗ LLM_API_KEY 没填（必填）。去申请一个粘进 .env（推荐 DeepSeek）"
         echo "    DeepSeek 申请链接：https://platform.deepseek.com/api_keys"
     fi
+    # LLM_BASE_URL / LLM_MODEL 只做提示，缺了 _build_client 会兜底/报错
+    base_url=$(grep -E "^LLM_BASE_URL=" .env 2>/dev/null | head -1 | sed -E "s/^LLM_BASE_URL=//; s/^['\"]//; s/['\"]$//")
+    model=$(grep -E "^LLM_MODEL=" .env 2>/dev/null | head -1 | sed -E "s/^LLM_MODEL=//; s/^['\"]//; s/['\"]$//")
+    echo "  ℹ LLM_BASE_URL=${base_url:-（留空=OpenAI 默认端点）}  LLM_MODEL=${model:-（必填，如 deepseek-chat）}"
 fi
 
 echo ""
@@ -164,9 +168,9 @@ fi
 if [ ! -d ".venv" ]; then
     echo "  → 跑 uv sync"
 elif [ ! -f ".env" ]; then
-    echo "  → 跑 cp .env.example .env 然后编辑填 DEEPSEEK_API_KEY"
-elif ! grep -E "^DEEPSEEK_API_KEY=.+|^OPENAI_API_KEY=.+|^ANTHROPIC_API_KEY=.+" .env 2>/dev/null | grep -qv "xxxxxxx"; then
-    echo "  → 编辑 .env 填一个真实的 API key"
+    echo "  → 跑 cp .env.example .env 然后编辑填 LLM_API_KEY"
+elif ! grep -E "^LLM_API_KEY=.+" .env 2>/dev/null | grep -qv "xxxxxxx"; then
+    echo "  → 编辑 .env 填一个真实的 LLM_API_KEY"
 elif [ ! -f "${RESUME_PATH:-resume/my_cover.pdf}" ]; then
     echo "  → mkdir -p resume 把 PDF 简历放进去命名 my_cover.pdf"
 elif [ ! -d "${BOSS_CHROME_PROFILE:-./chrome_profile}" ]; then
