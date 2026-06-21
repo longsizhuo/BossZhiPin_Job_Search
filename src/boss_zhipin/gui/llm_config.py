@@ -4,11 +4,16 @@
 三个键。``LLM_PRESETS`` 只是给前端一个"选了自动填 base_url + model"的快捷列表，
 **不是支持范围的限制**——填任意 base_url + model 就能接任何 OpenAI 兼容端点。
 
-读 .env **文件**为准（GUI standalone 启动时还没 load_dotenv，os.environ 是空的）；
-run 路径靠 models 的 import-time load_dotenv 自愈。写走 ``env_io.write_env``：
-落盘 + 同步 os.environ（存完即时生效，不用重启）。
+真相源 = ``os.environ`` 优先、回退 .env **文件**：GUI standalone 启动时还没
+load_dotenv，os.environ 里没有 .env 的值 → 读文件；但若用户在 shell 里
+``export LLM_API_KEY=...`` 而 .env 没写，os.environ 有、文件没有 → 也要认账，
+否则会和运行时 ``llm._build_client``（读 os.environ）判断打架，把本可跑的配置
+误拦成"还没配 AI"。写走 ``env_io.write_env``：落盘 + 同步 os.environ（存完即时
+生效，不用重启）。
 """
 from __future__ import annotations
+
+import os
 
 from dotenv import dotenv_values
 
@@ -21,17 +26,22 @@ def _file_values() -> dict[str, str | None]:
     return dotenv_values(path) if path.is_file() else {}
 
 
+def _effective(key: str, file_values: dict[str, str | None]) -> str:
+    """os.environ 优先、回退 .env 文件，取一个 LLM_* 的有效值。"""
+    return (os.environ.get(key) or file_values.get(key) or "").strip()
+
+
 def read_llm_config() -> dict[str, object]:
     """返回前端 Config 需要的：当前 base_url / model / 是否已配 key + 预设列表。
 
     不回传 key 明文（前端只需知道有没有）。前端按 baseUrl 匹配预设来高亮选项，
-    匹配不上就是「自定义」。
+    匹配不上就是「自定义」。值的真相源见 module docstring（os.environ 优先、回退文件）。
     """
     raw = _file_values()
     return {
-        "baseUrl": (raw.get("LLM_BASE_URL") or "").strip(),
-        "model": (raw.get("LLM_MODEL") or "").strip(),
-        "hasKey": bool((raw.get("LLM_API_KEY") or "").strip()),
+        "baseUrl": _effective("LLM_BASE_URL", raw),
+        "model": _effective("LLM_MODEL", raw),
+        "hasKey": bool(_effective("LLM_API_KEY", raw)),
         "presets": [
             {
                 "name": name,

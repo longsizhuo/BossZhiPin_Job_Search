@@ -27,7 +27,7 @@ import os
 from boss_zhipin.audit import log_attempt, validate_letter
 from boss_zhipin.gui.events import emit as _emit_progress
 from boss_zhipin.models.job_matcher import should_apply
-from boss_zhipin.models.llm import _provider_label, generate_letter
+from boss_zhipin.models.llm import current_provider_label, generate_letter
 from boss_zhipin.website_oper import finding_jobs
 
 log = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ async def send_job_descriptions_to_chat(
     # audit log（letters.jsonl）那一列的 provider/model 标签——从当前 LLM_* 推。
     # 真实运行时 token / 成本由 generate_letter 里的 telemetry 单独记。
     llm_model = os.getenv("LLM_MODEL", "").strip()
-    provider_label = _provider_label(os.getenv("LLM_BASE_URL", "").strip() or None)
+    provider_label = current_provider_label()
 
     await finding_jobs.open_browser_with_options(url, browser_type)
     _emit_progress("browser_started")
@@ -78,6 +78,9 @@ async def send_job_descriptions_to_chat(
     job_index = 1
     iteration = 0
     consecutive_misses = 0
+    # 一旦 LLM 评分走了 fail-open（缺配置 / 调用挂 / 解析不出分），第二层过滤其实在
+    # 全放行。只在本轮**首次**遇到时提示一次，别每个岗位刷屏。
+    degraded_warned = False
     # 推荐 feed 末尾、或者某条岗位卡 DOM 没渲染好，都会让 get_job_description
     # 返回 None。连续 N 次拿不到就当列表到底了停掉，否则 job_index 会无限涨。
     MAX_CONSECUTIVE_MISSES = 5
@@ -100,6 +103,15 @@ async def send_job_descriptions_to_chat(
                             job_description, resume_keywords, resume_text,
                             min_keyword_match, min_llm_score, exclude_keywords, vectorstore
                         )
+                        # 评分降级（fail-open）首次出现时显式告警一次——否则用户只看到
+                        # 一堆岗位"通过"，不知道第二层 LLM 过滤其实没在跑。
+                        if details.get("scoring_degraded") and not degraded_warned:
+                            degraded_warned = True
+                            log.warning(
+                                "⚠️ LLM 评分暂时不可用（%s），本轮所有岗位按放行处理",
+                                details.get("reason", ""),
+                            )
+                            _emit_progress("scoring_degraded", detail=details.get("reason", ""))
                         if not apply:
                             stage = details.get("stage", "unknown")
                             if stage == "blacklist":

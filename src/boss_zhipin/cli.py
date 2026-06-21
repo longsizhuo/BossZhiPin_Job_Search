@@ -100,6 +100,28 @@ def get_label() -> str:
     return os.getenv("BOSS_LABEL", "").strip()
 
 
+def _int_env(name: str, default: int, lo: int, hi: int) -> int:
+    """读一个整数环境变量，坏值 / 越界都降级到 [lo, hi] 内，**永不抛**。
+
+    ``BOSS_MIN_MATCH_SCORE`` 这类是 GUI 配置页能直接填的字段，裸 ``int()`` 遇到
+    ``abc`` / 空串 / ``150`` 会把整个 run 崩掉，用户只看到"点开始就崩"。这里把它
+    收敛成"坏值回退默认 + 一条 warning"，让跑得起来比跑得精确重要。
+    """
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        val = int(raw)
+    except ValueError:
+        log.warning("%s=%r 不是整数，回退默认 %d", name, raw, default)
+        return default
+    if val < lo or val > hi:
+        clamped = max(lo, min(hi, val))
+        log.warning("%s=%d 超出 [%d, %d]，收敛到 %d", name, val, lo, hi, clamped)
+        return clamped
+    return val
+
+
 async def run_provider(
     usr_name: str,
     label: str,
@@ -122,8 +144,9 @@ async def run_provider(
     # 提前为所有 provider 创建向量库，用于语义粗筛
     vectorstore = embed_resume(resume_text, "./vectorstores")
     
-    # LLM 匹配分阈值，低于该分跳过不投；可用 BOSS_MIN_MATCH_SCORE 覆盖
-    min_llm_score = int(os.getenv("BOSS_MIN_MATCH_SCORE", "50"))
+    # LLM 匹配分阈值，低于该分跳过不投；可用 BOSS_MIN_MATCH_SCORE 覆盖。
+    # 走 _int_env：GUI 填了非数字 / 越界也不崩 run，回退到 50 / 收敛到 0-100。
+    min_llm_score = _int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100)
     exclude_str = os.getenv("BOSS_EXCLUDE_KEYWORDS", "")
     exclude_keywords = [k.strip() for k in exclude_str.split(",") if k.strip()] if exclude_str else None
 

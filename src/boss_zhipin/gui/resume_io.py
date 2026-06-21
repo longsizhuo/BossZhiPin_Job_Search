@@ -86,6 +86,44 @@ def store_resume(src: str) -> dict[str, str]:
     return {"filename": dest.name, "path": abs_path}
 
 
+def store_resume_bytes(filename: str, data: bytes) -> dict[str, str]:
+    """把通过文件选择器选的 PDF（以字节传入）写进 ``resume/`` 并设为当前简历。
+
+    跟 ``store_resume`` 同一套校验 / 落点 / 持久化，区别只是来源是字节流而非磁盘
+    路径——Tauri webview 的 ``<input type=file>`` 给不到真实路径（安全限制），只能
+    拿到 File 的字节。拖拽上传仍走 ``store_resume``（那条有真实路径）。
+
+    返回 ``{"filename": ..., "path": ...}``（path 绝对）。校验失败抛 ``ValueError``。
+    """
+    name = Path(filename).name  # 只取 basename，挡掉路径穿越（如 "../../x.pdf"）
+    if name.lower().rsplit(".", 1)[-1] != "pdf":
+        raise ValueError("不是一个 PDF 文件（需要 .pdf）")
+    if not data:
+        raise ValueError("文件是空的")
+
+    dest_dir = Path(RESUME_DIR)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = (dest_dir / name).resolve()
+
+    # 先写临时文件校验，过了再原子替换——别把半个坏 PDF 落成当前简历。
+    tmp = dest.with_name(dest.name + ".tmp")
+    tmp.write_bytes(data)
+    try:
+        from pypdf import PdfReader  # 局部 import，避免无谓开销
+
+        readable = len(PdfReader(str(tmp)).pages) > 0
+    except Exception:
+        readable = False
+    if not readable:
+        tmp.unlink(missing_ok=True)
+        raise ValueError("不是一个能读取的 PDF（需要 .pdf 且至少一页）")
+    tmp.replace(dest)
+
+    abs_path = str(dest)
+    _persist_resume_path(abs_path)
+    return {"filename": dest.name, "path": abs_path}
+
+
 def current_resume() -> dict[str, str] | None:
     """返回当前简历 ``{"filename", "path"}``，没设置 / 文件不在则返回 None。
 
