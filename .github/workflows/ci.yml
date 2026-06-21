@@ -43,7 +43,7 @@ jobs:
           # 是向后兼容 shim。CI 同时校验两侧：(1) 包导入，(2) main.py shim 能 import。
           uv run python -c "import main"
           uv run python -c "import boss_zhipin"
-          uv run python -c "from boss_zhipin.providers import PROVIDER_ENV_KEYS, PROVIDER_SIGNUP, detect_providers"
+          uv run python -c "from boss_zhipin.providers import PROVIDER_ENV_KEYS, PROVIDER_SIGNUP, PROVIDER_LABELS, detect_providers"
           uv run python -c "from boss_zhipin.cli import _cli_main, detect_providers, pick_provider, run_provider, RECOMMEND_URL, PROVIDER_ENV_KEYS"
           uv run python -c "from boss_zhipin.paths import is_standalone, app_data_dir, ensure_app_data_cwd, APP_IDENTIFIER"
           uv run python -c "from boss_zhipin.audit import validate_letter, log_attempt"
@@ -64,6 +64,7 @@ jobs:
           uv run python -c "from boss_zhipin.gui.resume_io import store_resume, current_resume, DEFAULT_RESUME_PATH"
           uv run python -c "from boss_zhipin.gui.history import read_letters"
           uv run python -c "from boss_zhipin.gui.updates import check_latest_release, is_newer, current_version, REPO"
+          uv run python -c "from boss_zhipin.gui.provider_config import read_provider_config, write_provider_config"
 
       - name: 跑 pytest
         run: uv run pytest tests/ -v --tb=short

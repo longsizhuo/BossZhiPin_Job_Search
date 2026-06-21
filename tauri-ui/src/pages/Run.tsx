@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo } from "../lib/ipc";
+import { ipc, type ProgressEvent, type RunConfig, type ResumeInfo, type ProviderMeta } from "../lib/ipc";
 import { useRunStore } from "../store";
 
 // 运行页：editorial 三段式布局
@@ -10,7 +10,8 @@ import { useRunStore } from "../store";
 // 3) 控制按钮行（黑底白字反色）
 // 4) 双面板：进度事件 + 日志（日志保留黑底白字，刚好契合 monochrome）
 export default function RunPage() {
-  const [providers, setProviders] = useState<string[]>([]);
+  // 当前选定的服务商（在「配置」tab 选）——运行页只读展示，不再有下拉。
+  const [activeProvider, setActiveProvider] = useState<ProviderMeta | null>(null);
   const [providersError, setProvidersError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,12 +41,12 @@ export default function RunPage() {
   const eventsScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    ipc.detectProviders()
-      .then(({ providers }) => {
-        setProviders(providers);
-        if (providers.length > 0 && !useRunStore.getState().formProvider) {
-          setFormState({ formProvider: providers[0] });
-        }
+    // 服务商在「配置」tab 选；这里只取 active 那家用于运行 + 只读展示。
+    ipc.getProviderConfig()
+      .then((cfg) => {
+        const active = cfg.providers.find((p) => p.name === cfg.active) ?? null;
+        setActiveProvider(active);
+        setFormState({ formProvider: cfg.active });
       })
       .catch((e) => setProvidersError(String(e)));
 
@@ -131,8 +132,8 @@ export default function RunPage() {
       alert("请填用户名");
       return;
     }
-    if (!provider) {
-      alert("没有可用的 provider，先去配置 tab 填 API key");
+    if (!activeProvider || !activeProvider.hasKey) {
+      alert("当前服务商还没配 API key —— 去「配置」tab 选服务商并填 key");
       return;
     }
     setBusy(true);
@@ -239,30 +240,23 @@ export default function RunPage() {
             />
           </Field>
 
-          <Field label="LLM Provider">
+          <Field label="AI 服务商" hint="在「配置」tab 选">
             {providersError ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
                 <span className="badge-outline mr-2">ERROR</span>
-                检测失败：{providersError}
+                读取失败：{providersError}
               </div>
-            ) : providers.length === 0 ? (
+            ) : !activeProvider || !activeProvider.hasKey ? (
               <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)]">
                 <span className="badge-invert mr-2">No Key</span>
-                去「配置」tab 填一个 API key
+                去「配置」tab 选服务商并填 API key
               </div>
             ) : (
-              <select
-                value={provider}
-                onChange={(e) => setFormState({ formProvider: e.target.value })}
-                disabled={running}
-                className="field-input"
-              >
-                {providers.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+              // 只读展示：服务商在配置页选，这里不再有下拉
+              <div className="text-sm font-mono py-2 border-b-2 border-[var(--ink)] flex items-center gap-2">
+                <span className="badge-invert">{activeProvider.label}</span>
+                <span className="text-[var(--muted-fg)] text-xs">已配置 · 改用别家去「配置」tab</span>
+              </div>
             )}
           </Field>
 

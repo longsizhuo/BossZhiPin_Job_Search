@@ -76,6 +76,11 @@ export const ipc = {
   getEnvFields: () => pyInvoke<{ fields: EnvField[] }>("get_env_fields", {}),
   writeEnvFields: (updates: Record<string, string>) =>
     pyInvoke<{ status: string }>("write_env_fields", { updates }),
+  // AI 服务商：选一家 + 填一个 key。apiKey 留空 = 只切服务商、不动已存的 key。
+  getProviderConfig: () =>
+    pyInvoke<ProviderConfig>("get_provider_config", {}),
+  setProviderConfig: (active: string, apiKey: string) =>
+    pyInvoke<{ status: string }>("set_provider_config", { active, apiKey }),
   // 简历：set_resume 把拖入的 PDF 复制进 app 数据目录的 resume/；get_resume 读回当前简历。
   setResume: (path: string) =>
     pyInvoke<{ filename: string; path: string }>("set_resume", { path }),
@@ -98,4 +103,17 @@ export type UpdateInfo = {
   latest: string;
   url: string;
   hasUpdate: boolean;
+};
+
+// AI 服务商元数据：内部名 / 显示名 / 申请 key 的页面 / 是否已配 key。
+export type ProviderMeta = {
+  name: string;       // deepseek / chatgpt / claude（内部名，传给 start_run）
+  label: string;      // DeepSeek / OpenAI / Anthropic · Claude（给用户看）
+  signupUrl: string;
+  hasKey: boolean;
+};
+
+export type ProviderConfig = {
+  active: string;             // 当前选定的服务商内部名
+  providers: ProviderMeta[];
 };

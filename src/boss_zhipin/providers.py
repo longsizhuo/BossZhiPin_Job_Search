@@ -30,6 +30,14 @@ PROVIDER_SIGNUP: dict[str, str] = {
     "claude": "https://console.anthropic.com/settings/keys",
 }
 
+# provider 名 → 给用户看的显示名（GUI 服务商选择器用）。内部名 chatgpt/claude
+# 是历史 CLI 参数，对用户没意义，展示层统一成大家认识的品牌名。
+PROVIDER_LABELS: dict[str, str] = {
+    "deepseek": "DeepSeek",
+    "chatgpt": "OpenAI",
+    "claude": "Anthropic · Claude",
+}
+
 
 def detect_providers() -> list[str]:
     """返回当前 env 里配了 API key 的 provider 名字列表。"""

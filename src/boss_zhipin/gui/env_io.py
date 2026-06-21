@@ -21,13 +21,17 @@ from pathlib import Path
 
 from dotenv import dotenv_values, set_key, unset_key
 
-# 暴露给前端的配置字段。每一项映射 ``.env`` 里一个 key。
+from boss_zhipin.providers import PROVIDER_ENV_KEYS
+
+# 暴露给前端 Config 通用表单的字段。每一项映射 ``.env`` 里一个 key。
 # 顺序决定前端表单顺序。
+#
+# 三个 API key（DEEPSEEK/OPENAI/ANTHROPIC_API_KEY）**故意不在这里**：它们改由
+# Config 页顶部的「AI 服务商」选择器统一管理（选一家 + 填一个 key），不再各占
+# 一个裸输入框——三个框会让小白以为"必须都填"。env key 本身不变，仍由
+# ``gui.provider_config`` 读写，并在下面的 ``_ALLOWED_KEYS`` 里放行。
 KNOWN_KEYS: list[tuple[str, str, bool]] = [
     # (env key, 字段说明, is_secret)
-    ("DEEPSEEK_API_KEY", "DeepSeek API key", True),
-    ("OPENAI_API_KEY", "OpenAI API key", True),
-    ("ANTHROPIC_API_KEY", "Anthropic (Claude) API key", True),
     ("BOSS_USR_NAME", "你的名字（招呼语署名）", False),
     ("BOSS_LABEL", "求职 tag（空走 BOSS 推荐 feed）", False),
     # RESUME_PATH 不在此处：改由「运行」tab 拖拽上传管理（gui.resume_io），
@@ -45,7 +49,14 @@ def _env_path() -> Path:
     return Path(".env")
 
 
-_ALLOWED_KEYS: frozenset[str] = frozenset(k for k, _, _ in KNOWN_KEYS)
+# 写白名单 = 通用表单字段 ∪ 三个 provider API key ∪ BOSS_PROVIDER（选服务商时存）。
+# API key / BOSS_PROVIDER 不在 KNOWN_KEYS（不渲染成通用框），但仍要能写，
+# 所以单独并进来。其余任何 key 一律拒写（防注入）。
+_ALLOWED_KEYS: frozenset[str] = (
+    frozenset(k for k, _, _ in KNOWN_KEYS)
+    | frozenset(PROVIDER_ENV_KEYS.values())
+    | {"BOSS_PROVIDER"}
+)
 
 
 def read_env() -> dict[str, str]:

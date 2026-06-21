@@ -227,7 +227,34 @@ async def shutdown_browser() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# ---------- Config 面板 ----------
+# ---------- Config 面板：AI 服务商选择器 ----------
+
+
+@commands.command()
+async def get_provider_config() -> dict[str, object]:
+    """返回服务商选择器需要的信息：``{active, providers: [...]}``。
+
+    读 .env 文件（不是 os.environ）——GUI 启动时 env 还没 load，见
+    ``gui.provider_config`` 的说明。
+    """
+    from boss_zhipin.gui.provider_config import read_provider_config
+    return read_provider_config()
+
+
+class _ProviderConfigBody(_CamelModel):
+    active: str
+    api_key: str = ""  # 空 → 只切服务商，不动已存的 key
+
+
+@commands.command()
+async def set_provider_config(body: _ProviderConfigBody) -> dict[str, str]:
+    """存选定的服务商（+ 可选 key）。unknown provider → ValueError 被前端 catch。"""
+    from boss_zhipin.gui.provider_config import write_provider_config
+    write_provider_config(body.active, body.api_key or None)
+    return {"status": "saved"}
+
+
+# ---------- Config 面板：通用字段 ----------
 
 
 @commands.command()

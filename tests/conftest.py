@@ -22,6 +22,8 @@ _PROJECT_ENV_VARS = (
     "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
     # 用户输入兜底
     "BOSS_USR_NAME", "BOSS_LABEL", "RESUME_PATH",
+    # GUI 选定的 provider
+    "BOSS_PROVIDER",
     # OpenAI / 模型选项
     "OPENAI_BASE_URL", "CHATGPT_MODEL",
     # retry 装饰器在 import time 读这些，本机有 export 会影响装饰器默认值
