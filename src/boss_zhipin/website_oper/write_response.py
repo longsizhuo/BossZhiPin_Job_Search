@@ -139,6 +139,9 @@ async def send_job_descriptions_to_chat(
                                 index=job_index,
                                 reason=stage,
                                 detail=details.get("reason", ""),
+                                score=details.get("score"),
+                                threshold=details.get("threshold"),
+                                matched=details.get("matched_keywords"),
                             )
                             job_index += 1
                             await asyncio.sleep(3)
@@ -147,6 +150,10 @@ async def send_job_descriptions_to_chat(
                         if "score" in details:
                             log.info("   LLM 评分: %s/100 - %s", details["score"], details["reason"])
                     # ====== 过滤结束 ======
+
+                    # LLM 评分（resume_text 为空时没跑过滤 → None），带进 letter_sent 事件，
+                    # 让 GUI 进度面板能看到"这条招呼语对应的岗位匹配多少分"。
+                    match_score = details.get("score") if resume_text else None
 
                     # LLM 调用是同步阻塞的 HTTP 请求，扔到 thread pool 跑
                     # 避免阻塞事件循环 → 卡死 nodriver CDP heartbeat
@@ -167,7 +174,8 @@ async def send_job_descriptions_to_chat(
                             job_description=job_description, letter=response,
                             validation=validation, dry_run=dry_run, sent=False,
                         )
-                        _emit_progress("letter_sent", index=job_index, status="blocked")
+                        _emit_progress("letter_sent", index=job_index, status="blocked",
+                                       score=match_score, letter_len=len(response))
                     elif dry_run:
                         log.info(
                             "[DRY-RUN] 招呼语 (%d 字符) 不发送。--- letter ---\n%s\n--------------",
@@ -178,7 +186,8 @@ async def send_job_descriptions_to_chat(
                             job_description=job_description, letter=response,
                             validation=validation, dry_run=True, sent=False,
                         )
-                        _emit_progress("letter_sent", index=job_index, status="dry_run")
+                        _emit_progress("letter_sent", index=job_index, status="dry_run",
+                                       score=match_score, letter_len=len(response))
                     else:
                         log.info("发送招呼语：%s", response)
                         await asyncio.sleep(1)
@@ -193,7 +202,8 @@ async def send_job_descriptions_to_chat(
                             job_description=job_description, letter=response,
                             validation=validation, dry_run=False, sent=True,
                         )
-                        _emit_progress("letter_sent", index=job_index, status="sent")
+                        _emit_progress("letter_sent", index=job_index, status="sent",
+                                       score=match_score, letter_len=len(response))
             else:
                 consecutive_misses += 1
                 log.info(

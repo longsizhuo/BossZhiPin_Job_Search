@@ -258,7 +258,12 @@ async def _js_wait_text(css_selector: str, min_len: int, timeout_s: float) -> st
           try {{
             const el = document.querySelector({json.dumps(css_selector)});
             if (!el) return {{ok: false, reason: 'not_found'}};
-            const text = (el.textContent || '').trim();
+            // 用 innerText 而非 textContent：BOSS 反爬往 JD 里塞了 <style> 块（其 CSS
+            // 源码会被 textContent 读出来）+ display:none / width:0.1px 的隐藏诱饵 span
+            // （逐字插 "来自BOSS直聘"/"kanzhun" 把真词劈开，导致关键词匹配全废、命中骤降）。
+            // innerText 只返回「渲染可见」文本，自动排除 <style> 源码和隐藏元素，拿到干净
+            // JD 正文。诊断见 scripts/probe_jd_extract.py（s1=textContent 脏 / s2=innerText 净）。
+            const text = (el.innerText || '').trim();
             if (text.length < {min_len}) return {{ok: false, reason: 'too_short', len: text.length}};
             return {{ok: true, text: text}};
           }} catch (e) {{
@@ -337,6 +342,24 @@ async def select_dropdown_option(label: str) -> None:
     log.info("  路径 3: fallback —— 用 BOSS 默认的推荐 feed 继续（不主动选 tag）")
 
 
+# BOSS 详情面板顶部的 UI 文字（按钮 / 区块标题），不是 JD 正文。innerText 会把它们
+# 带在最前面（"举报\n微信扫码分享\n职位描述\n…"），剥掉让喂给匹配/LLM 的更纯。
+_JD_NOISE_LINES = frozenset({"举报", "微信扫码分享", "微信分享", "分享", "职位描述", "立即沟通", "收藏"})
+
+
+def _strip_jd_noise(text: str) -> str:
+    """剥掉 JD 文本**开头连续**的页面 UI 噪声行。
+
+    只剥开头那几行（举报 / 微信扫码分享 / 职位描述 …）；正文里万一再出现同样的词
+    不动。纯函数，便于单测（见 tests/test_finding_jobs_text.py）。
+    """
+    lines = (text or "").split("\n")
+    i = 0
+    while i < len(lines) and lines[i].strip() in _JD_NOISE_LINES:
+        i += 1
+    return "\n".join(lines[i:]).strip()
+
+
 async def get_job_description_by_index(index: int) -> str | None:
     """点开第 N 个岗位卡（1-indexed），返回右侧 JD 详情面板的文本；失败返回 None。"""
     log.info("[get_job_description_by_index] index=%d", index)
@@ -350,6 +373,7 @@ async def get_job_description_by_index(index: int) -> str | None:
     if jd is None:
         log.info("  10s 内 .job-detail-body 没出现或文本太短")
         return None
+    jd = _strip_jd_noise(jd)
     log.info("  JD 长度 %d 字符", len(jd))
     return jd
 

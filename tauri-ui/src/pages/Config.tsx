@@ -33,6 +33,11 @@ export default function ConfigPage() {
   // 明文/密文切换：粘贴 key 后能核对一眼，避免带错空格/漏字符跑到一半才报 401
   const [showKey, setShowKey] = useState(false);
 
+  // 招呼语自定义 prompt 段（空字符串 = 用内置默认）
+  const [letterPrompt, setLetterPrompt] = useState("");
+  const [letterPromptInitial, setLetterPromptInitial] = useState("");
+  const [letterPromptDefault, setLetterPromptDefault] = useState("");
+
   useEffect(() => {
     refresh();
   }, []);
@@ -41,9 +46,10 @@ export default function ConfigPage() {
     setLoading(true);
     setError(null);
     try {
-      const [{ fields }, cfg] = await Promise.all([
+      const [{ fields }, cfg, lp] = await Promise.all([
         ipc.getEnvFields(),
         ipc.getLlmConfig(),
+        ipc.getLetterPrompt(),
       ]);
       setFields(fields);
       setEdits({});
@@ -51,6 +57,9 @@ export default function ConfigPage() {
       setBaseUrl(cfg.baseUrl);
       setModel(cfg.model);
       setKeyEdit(null);
+      setLetterPrompt(lp.prompt);
+      setLetterPromptInitial(lp.prompt);
+      setLetterPromptDefault(lp.default);
       // 按 baseUrl 匹配预设来高亮下拉；匹配不上就是「自定义」
       const match = cfg.presets.find((p) => p.baseUrl === cfg.baseUrl);
       setPreset(match ? match.name : CUSTOM);
@@ -99,7 +108,8 @@ export default function ConfigPage() {
   const llmDirty =
     llmCfg !== null &&
     (baseUrl !== llmCfg.baseUrl || model !== llmCfg.model || keyEdit !== null);
-  const dirty = Object.keys(edits).length > 0 || llmDirty;
+  const promptDirty = letterPrompt !== letterPromptInitial;
+  const dirty = Object.keys(edits).length > 0 || llmDirty || promptDirty;
 
   async function save() {
     setSaving(true);
@@ -110,6 +120,10 @@ export default function ConfigPage() {
       }
       if (Object.keys(edits).length > 0) {
         await ipc.writeEnvFields(edits);
+      }
+      if (promptDirty) {
+        // 末尾留白没意义，trim 掉；空串 = 删除自定义 = 回退默认
+        await ipc.setLetterPrompt(letterPrompt.trim());
       }
       setSaved(true);
       await refresh();
@@ -128,6 +142,11 @@ export default function ConfigPage() {
   function changeLang(next: Lang) {
     setLang(next);
     ipc.setLanguage(next).catch(() => {});
+  }
+
+  function editPrompt(v: string) {
+    setSaved(false);
+    setLetterPrompt(v);
   }
 
   return (
@@ -312,6 +331,38 @@ export default function ConfigPage() {
                 </div>
               </div>
             ))}
+          </section>
+
+          {/* === 招呼语 Prompt（自定义生成指令，留空用内置默认）=== */}
+          <section className="space-y-3 border-t-2 border-[var(--ink)] pt-6">
+            <div>
+              <label className="field-label">{t("config.letterPrompt")}</label>
+              <p className="mt-1 text-xs font-mono text-[var(--muted-fg)] italic">
+                {t("config.letterPromptHint")}
+              </p>
+            </div>
+            <textarea
+              value={letterPrompt}
+              onChange={(e) => editPrompt(e.target.value)}
+              rows={8}
+              className="field-input font-mono text-sm leading-relaxed"
+              placeholder={letterPromptDefault || t("config.letterPromptPlaceholder")}
+            />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => editPrompt("")}
+                disabled={letterPrompt === ""}
+                className="btn-ghost text-xs"
+              >
+                {t("btn.resetDefault")}
+              </button>
+              {letterPrompt === "" && (
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-fg)] italic">
+                  {t("config.letterPromptPlaceholder")}
+                </span>
+              )}
+            </div>
           </section>
         </>
       )}

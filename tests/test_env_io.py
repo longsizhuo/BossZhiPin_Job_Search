@@ -83,3 +83,24 @@ class TestLanguage:
         env_io.write_language("zh")
         monkeypatch.delenv(env_io.LANG_ENV, raising=False)
         assert env_io.read_language() == "zh"
+
+
+class TestLetterPrompt:
+    def test_round_trip(self, in_tmp_cwd, monkeypatch):
+        monkeypatch.delenv(env_io.LETTER_PROMPT_ENV, raising=False)
+        env_io.write_letter_prompt("自定义：署名 {usr_name}")
+        assert os.getenv(env_io.LETTER_PROMPT_ENV) == "自定义：署名 {usr_name}"
+        got = env_io.read_letter_prompt()
+        assert got["prompt"] == "自定义：署名 {usr_name}"
+        assert got["default"]  # 默认全文非空
+
+    def test_unset_returns_empty_with_default(self, in_tmp_cwd, monkeypatch):
+        monkeypatch.delenv(env_io.LETTER_PROMPT_ENV, raising=False)
+        got = env_io.read_letter_prompt()
+        assert got["prompt"] == ""
+        assert "真人" in got["default"]  # 内置默认是"像真人"那版
+
+    def test_empty_write_clears(self, in_tmp_cwd, monkeypatch):
+        env_io.write_letter_prompt("x")
+        env_io.write_letter_prompt("")
+        assert os.getenv(env_io.LETTER_PROMPT_ENV) is None

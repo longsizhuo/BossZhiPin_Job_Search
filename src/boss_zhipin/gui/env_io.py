@@ -52,11 +52,16 @@ def _env_path() -> Path:
 # KNOWN_KEYS；但 env key 本身要可写，并进下面的 _ALLOWED_KEYS。
 LANG_ENV = "BOSS_LANG"
 
-# 写白名单 = 通用表单字段 ∪ LLM 端点三件套 ∪ UI 语言。后三者不渲染成通用框，
-# 但要能写，所以并进来。其余任何 key 一律拒写（防注入）。
+# 招呼语自定义 prompt。多行长文本，由 Config 的专用 textarea 管（不是单行裸框），
+# 所以同样不进 KNOWN_KEYS、只进 _ALLOWED_KEYS。字面值跟 models.prompts.LETTER_PROMPT_ENV
+# 对齐（这里写字面量避免模块加载期 import models.prompts）。
+LETTER_PROMPT_ENV = "BOSS_LETTER_PROMPT"
+
+# 写白名单 = 通用表单字段 ∪ LLM 端点三件套 ∪ UI 语言 ∪ 自定义 prompt。后几者不渲染成
+# 通用框，但要能写，所以并进来。其余任何 key 一律拒写（防注入）。
 _ALLOWED_KEYS: frozenset[str] = (
     frozenset(k for k, _, _ in KNOWN_KEYS)
-    | {LLM_API_KEY_ENV, LLM_BASE_URL_ENV, LLM_MODEL_ENV, LANG_ENV}
+    | {LLM_API_KEY_ENV, LLM_BASE_URL_ENV, LLM_MODEL_ENV, LANG_ENV, LETTER_PROMPT_ENV}
 )
 
 
@@ -128,3 +133,25 @@ def read_language() -> str:
 def write_language(lang: str) -> None:
     """存 UI 语言到 .env + 同步 os.environ（即时生效，无需重启）。"""
     write_env({LANG_ENV: lang})
+
+
+def read_letter_prompt() -> dict[str, str]:
+    """返回 ``{"prompt": 用户自定义(空=没设), "default": 内置默认}``。
+
+    给 GUI 的 prompt 编辑框用：``prompt`` 是当前自定义值（留空就是用默认），
+    ``default`` 让前端能把内置默认当 placeholder 展示 / 一键恢复。os.environ 优先、
+    回退 .env 文件（GUI 早期 env 可能还没 load）。
+    """
+    from boss_zhipin.models.prompts import DEFAULT_LETTER_PROMPT
+
+    val = os.getenv(LETTER_PROMPT_ENV)
+    if not val:
+        path = _env_path()
+        if path.is_file():
+            val = dotenv_values(path).get(LETTER_PROMPT_ENV)
+    return {"prompt": val or "", "default": DEFAULT_LETTER_PROMPT}
+
+
+def write_letter_prompt(prompt: str) -> None:
+    """存自定义招呼语 prompt 到 .env（空字符串 = 删除 = 回退默认）。即时生效。"""
+    write_env({LETTER_PROMPT_ENV: prompt})

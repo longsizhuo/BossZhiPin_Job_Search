@@ -306,6 +306,28 @@ async def set_language(body: _LanguageBody) -> dict[str, str]:
     return {"status": "saved"}
 
 
+# ---------- Config 面板：招呼语自定义 prompt ----------
+
+
+@commands.command()
+async def get_letter_prompt() -> dict[str, str]:
+    """返回 ``{prompt, default}``：当前自定义 prompt（空=用默认）+ 内置默认全文。"""
+    from boss_zhipin.gui.env_io import read_letter_prompt
+    return read_letter_prompt()
+
+
+class _LetterPromptBody(_CamelModel):
+    prompt: str = ""  # 空字符串 = 删除自定义 = 回退默认
+
+
+@commands.command()
+async def set_letter_prompt(body: _LetterPromptBody) -> dict[str, str]:
+    """存自定义招呼语 prompt（空 = 恢复默认）。即时生效，下一条招呼语就按新 prompt 生成。"""
+    from boss_zhipin.gui.env_io import write_letter_prompt
+    write_letter_prompt(body.prompt)
+    return {"status": "saved"}
+
+
 # ---------- 简历（Run 页拖拽上传） ----------
 
 

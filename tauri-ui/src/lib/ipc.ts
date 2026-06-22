@@ -100,6 +100,11 @@ export const ipc = {
   getLanguage: () => pyInvoke<{ lang: string }>("get_language", {}),
   setLanguage: (lang: string) =>
     pyInvoke<{ status: string }>("set_language", { lang }),
+  // 招呼语自定义 prompt：prompt 是当前自定义值（空=用默认），default 是内置默认全文。
+  getLetterPrompt: () =>
+    pyInvoke<{ prompt: string; default: string }>("get_letter_prompt", {}),
+  setLetterPrompt: (prompt: string) =>
+    pyInvoke<{ status: string }>("set_letter_prompt", { prompt }),
   // 简历：set_resume 把拖入的 PDF 复制进 app 数据目录的 resume/；get_resume 读回当前简历。
   setResume: (path: string) =>
     pyInvoke<{ filename: string; path: string }>("set_resume", { path }),
