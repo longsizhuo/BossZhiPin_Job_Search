@@ -53,7 +53,7 @@ jobs:
           uv run python -c "from boss_zhipin.models.llm import generate_letter, _build_client, _provider_label, current_provider_label"
           uv run python -c "from boss_zhipin.models.prompts import assistant_instructions, DEFAULT_LETTER_PROMPT, LETTER_PROMPT_ENV"
           uv run python -c "from boss_zhipin.models.job_matcher import should_apply, keyword_match, llm_match_score, extract_keywords_from_text, extract_resume_text"
-          uv run python -c "from boss_zhipin.website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message, shutdown, _strip_jd_noise"
+          uv run python -c "from boss_zhipin.website_oper.finding_jobs import open_browser_with_options, log_in, get_tab, send_chat_message, shutdown, _strip_jd_noise, _clear_singleton_locks, _reap_profile_chrome"
           uv run python -c "from boss_zhipin.website_oper.write_response import send_job_descriptions_to_chat, send_response_and_go_back"
           uv run python -c "from scripts.dump_boss_page import PROBE_JS, TARGET_URL, main"
           uv run python -c "from boss_zhipin.gui.events import ProgressEvent, EventKind, emit, set_emit_callback"

@@ -16,6 +16,8 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
+import sys
 
 import nodriver as uc
 from nodriver import Config
@@ -134,6 +136,69 @@ async def shutdown() -> None:
     _tab = None
 
 
+def _clear_singleton_locks(profile_dir: str) -> None:
+    """删掉 profile 里残留的 Singleton 锁文件。
+
+    上次 Chrome 没退干净会留下 ``SingletonLock/Cookie/Socket``，新 Chrome 看到会
+    误判 profile 被占。纯文件操作，便于单测。
+    """
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        try:
+            os.remove(os.path.join(profile_dir, name))
+        except FileNotFoundError:
+            pass
+        except Exception as e:  # noqa: BLE001 — best-effort 清理，失败不致命
+            log.debug("清 Singleton 锁 %s 跳过：%s", name, e)
+
+
+def _kill_profile_chrome(profile_dir: str) -> None:
+    """杀掉占着本 profile 的残留 Chrome（上次 run 崩了没收掉的孤儿）。
+
+    profile 目录本工具独占，``--user-data-dir=<profile>`` 命中的一定是我们自己的
+    残留，杀掉安全。这是用户实测的"连接失败"根因：上次启动起了 Chrome 但 CDP 没
+    连上，孤儿一直占着 profile，下次再起就被锁。
+    """
+    if sys.platform == "win32":
+        # Windows 按命令行过滤进程不便（无 pkill），跳过——靠清锁 + Chrome 自身的
+        # stale-lock 接管兜底；macOS/Linux 才主动收孤儿。
+        return
+    try:
+        subprocess.run(
+            ["pkill", "-f", os.path.abspath(profile_dir)],
+            capture_output=True, timeout=5,
+        )
+    except Exception as e:  # noqa: BLE001 — 没装 pkill / 无匹配都不致命
+        log.debug("pkill 残留 Chrome 跳过：%s", e)
+
+
+def _reap_profile_chrome(profile_dir: str) -> None:
+    """起浏览器前的自清理：先收掉占 profile 的孤儿 Chrome，再清 Singleton 锁。"""
+    _kill_profile_chrome(profile_dir)
+    _clear_singleton_locks(profile_dir)
+
+
+async def _start_browser_with_retry(config: Config, attempts: int = 3) -> uc.Browser:
+    """启动并连上 Chrome，失败重试。
+
+    新版 Chrome（如 149）+ 新 macOS 冷启动时，CDP 端口起得慢，nodriver 第一次连
+    经常 timeout 报 "Failed to connect to browser"，但 Chrome 其实已经起来了 →
+    变孤儿占住 profile。所以每次失败都先 reap（杀掉这次起的、没连上的 Chrome +
+    清锁），再退避重试。
+    """
+    last_err: Exception | None = None
+    for i in range(1, attempts + 1):
+        try:
+            return await uc.start(config=config)
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            log.warning("浏览器启动/连接失败（第 %d/%d 次）：%s", i, attempts, e)
+            _reap_profile_chrome(config.user_data_dir)
+            if i < attempts:
+                await asyncio.sleep(2.0 * i)
+    assert last_err is not None
+    raise last_err
+
+
 async def open_browser_with_options(url: str, browser: str) -> None:
     """启动 Chrome 并打开 url。``browser`` 仅接受 ``"chrome"``。"""
     global _browser, _tab
@@ -142,10 +207,13 @@ async def open_browser_with_options(url: str, browser: str) -> None:
             f"browser={browser!r} 不再支持；nodriver 只走 Chrome。"
         )
     os.makedirs(CHROME_PROFILE_DIR, exist_ok=True)
+    # 起之前先收掉上次没退干净、占着本 profile 的孤儿 Chrome + 清残留锁，
+    # 否则会复现用户实测的 "Failed to connect to browser"（profile 被旧实例锁住）。
+    _reap_profile_chrome(CHROME_PROFILE_DIR)
     config = Config()
     config.user_data_dir = CHROME_PROFILE_DIR
     config.headless = False
-    _browser = await uc.start(config=config)
+    _browser = await _start_browser_with_retry(config)
 
     # 持久化 profile 启动时 Chrome 会把上次的 tab 都恢复出来；脚本控制的 tab
     # 直接放到一个独立的新窗口里，跟历史窗口井水不犯河水，新窗口默认抢焦。

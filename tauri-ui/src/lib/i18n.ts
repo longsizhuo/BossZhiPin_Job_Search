@@ -139,6 +139,7 @@ const zh: Dict = {
   "field.BOSS_LABEL": "求职 tag（空走 BOSS 推荐 feed）",
   "field.BOSS_CHROME_PROFILE": "Chrome profile 目录（默认 ./chrome_profile）",
   "field.BOSS_MIN_MATCH_SCORE": "LLM 匹配分阈值（默认 50）",
+  "field.BOSS_MIN_KEYWORD_MATCH": "关键词匹配门槛（默认 2，跳过太多就调低到 1）",
   "field.BOSS_EXCLUDE_KEYWORDS": "岗位黑名单（用逗号分隔，如：外包,驻场）",
   "field.LOGLEVEL": "日志级别（默认 INFO）",
 
@@ -273,6 +274,7 @@ const en: Dict = {
   "field.BOSS_LABEL": "Job tag (empty uses BOSS recommended feed)",
   "field.BOSS_CHROME_PROFILE": "Chrome profile directory (default ./chrome_profile)",
   "field.BOSS_MIN_MATCH_SCORE": "LLM match score threshold (default 50)",
+  "field.BOSS_MIN_KEYWORD_MATCH": "Keyword match threshold (default 2; lower to 1 if too many skipped)",
   "field.BOSS_EXCLUDE_KEYWORDS": "Job blacklist (comma-separated, e.g. 外包,驻场)",
   "field.LOGLEVEL": "Log level (default INFO)",
 

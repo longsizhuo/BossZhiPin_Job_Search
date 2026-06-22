@@ -3,7 +3,7 @@
 ``_strip_jd_noise`` 剥掉 JD 开头的页面 UI 噪声行（举报 / 微信扫码分享 / 职位描述…），
 这些是 ``.job-detail-body`` 的 innerText 带进来的页面 chrome，不是 JD 正文。
 """
-from boss_zhipin.website_oper.finding_jobs import _strip_jd_noise
+from boss_zhipin.website_oper.finding_jobs import _clear_singleton_locks, _strip_jd_noise
 
 
 def test_strips_leading_ui_noise():
@@ -28,3 +28,18 @@ def test_no_noise_unchanged():
 def test_empty_and_none():
     assert _strip_jd_noise("") == ""
     assert _strip_jd_noise(None) == ""
+
+
+def test_clear_singleton_locks_removes_locks_keeps_cookies(tmp_path):
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket", "Cookies"):
+        (tmp_path / name).write_text("x")
+    _clear_singleton_locks(str(tmp_path))
+    # 三个 Singleton 锁删掉；登录态文件（Cookies）保留
+    assert not (tmp_path / "SingletonLock").exists()
+    assert not (tmp_path / "SingletonCookie").exists()
+    assert not (tmp_path / "SingletonSocket").exists()
+    assert (tmp_path / "Cookies").exists()
+
+
+def test_clear_singleton_locks_missing_ok(tmp_path):
+    _clear_singleton_locks(str(tmp_path))  # 没有锁文件也不报错

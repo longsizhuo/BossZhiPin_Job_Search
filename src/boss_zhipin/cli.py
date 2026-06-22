@@ -147,6 +147,9 @@ async def run_provider(
     # LLM 匹配分阈值，低于该分跳过不投；可用 BOSS_MIN_MATCH_SCORE 覆盖。
     # 走 _int_env：GUI 填了非数字 / 越界也不崩 run，回退到 50 / 收敛到 0-100。
     min_llm_score = _int_env("BOSS_MIN_MATCH_SCORE", 50, 0, 100)
+    # 关键词粗筛门槛：JD 至少命中几个简历关键词才进 LLM 评分。可用 BOSS_MIN_KEYWORD_MATCH
+    # 覆盖（默认 2）。觉得跳过太多（推荐 feed 跟简历词对不上）就调低到 1。
+    min_keyword_match = _int_env("BOSS_MIN_KEYWORD_MATCH", 2, 0, 20)
     exclude_str = os.getenv("BOSS_EXCLUDE_KEYWORDS", "")
     exclude_keywords = [k.strip() for k in exclude_str.split(",") if k.strip()] if exclude_str else None
 
@@ -158,6 +161,7 @@ async def run_provider(
         dry_run=dry_run,
         resume_keywords=resume_keywords,
         resume_text=resume_text,
+        min_keyword_match=min_keyword_match,
         min_llm_score=min_llm_score,
         exclude_keywords=exclude_keywords,
         vectorstore=vectorstore,
