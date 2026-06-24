@@ -1,0 +1,16 @@
+{
+  "projectId": "2855abef-fced-465c-81d1-0c90298cbd51",
+  "pkg": "boss-tauri-ui",
+  "globalName": "BossTauriUI",
+  "shape": "package",
+  "entry": "tauri-ui/dist/index.js",
+  "buildCmd": "tauri-ui/node_modules/.bin/tailwindcss -c .design-sync/tailwind.ds.config.js -i tauri-ui/src/index.css -o tauri-ui/.ds-compiled.css --minify",
+  "srcDir": "src",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": ".ds-compiled.css",
+  "runtimeFontPrefixes": ["Source Han", "Songti", "宋体", "Noto Sans Mono CJK"],
+  "libOverrides": {
+    "source-kit.mjs": "synth entry re-exports default-exported screens as named (bare export * drops defaults → [BUNDLE_EXPORT])"
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
