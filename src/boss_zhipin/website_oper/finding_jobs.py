@@ -51,6 +51,24 @@ def _on_login_page(url: str) -> bool:
     return any(s in url for s in ("/web/user/", "passport-zp", "/login"))
 
 
+def _is_logged_in_from_page_state(url: str, info: dict) -> bool:
+    """从 URL + DOM 探测结果判断登录态。
+
+    BOSS 未登录时不一定停在登录页：可能落在职位列表页，但顶部仍有
+    "登录/注册"，详情正文也会显示"登录查看完整内容"。这些都必须判为未登录，
+    否则主流程会误以为已登录，跳过扫码等待后直接开始抓 JD。
+    """
+    if _on_login_page(url):
+        return False
+    if info.get("loginWallVisible"):
+        return False
+    if info.get("headerLoginVisible"):
+        return False
+    if info.get("loginRequiredVisible"):
+        return False
+    return True
+
+
 async def _is_logged_in() -> bool:
     """判定登录态：URL + DOM 双 check。
 
@@ -83,12 +101,23 @@ async def _is_logged_in() -> bool:
         '[class*="login-dialog"], [class*="boss-login"], '
         + '[class*="loginDialog"], [class*="login-wrap"]'
       );
-      return { loginWallVisible: visible(wall) };
+      const headerLogin = document.querySelector(
+        '.header-login-btn, a[ka="header-login"], [ka="guide_login_btn_click"], '
+        + '.guide-login-btn, .zp-job-list-login-card'
+      );
+      const bodyText = document.body ? document.body.innerText || '' : '';
+      return {
+        loginWallVisible: visible(wall),
+        headerLoginVisible: visible(headerLogin),
+        loginRequiredVisible: bodyText.includes('登录查看完整内容')
+          || bodyText.includes('登录账号，查看更多好职位')
+      };
     })());
     """
     info = await _safe_evaluate(js, timeout=5)
-    if info.get("loginWallVisible"):
-        log.info("URL 看起来已登录但页面上有登录浮层 → 判未登录，走扫码")
+    logged_in = _is_logged_in_from_page_state(_tab.url, info)
+    if not logged_in:
+        log.info("页面上有未登录信号 %s → 判未登录，走扫码", info)
         return False
     return True
 
