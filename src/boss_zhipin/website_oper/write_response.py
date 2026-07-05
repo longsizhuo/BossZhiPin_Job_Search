@@ -35,12 +35,25 @@ from boss_zhipin.website_oper import finding_jobs
 log = logging.getLogger(__name__)
 
 
+class ReturnToListError(RuntimeError):
+    """招呼语已经发出、但没能退回岗位列表。
+
+    单独一个异常类型，让主循环能区分「消息压根没发出去」和「消息已送达、只是没回到
+    列表」——后者必须照常记 ``sent=True``，否则会漏记真实已发送的招呼语，重跑时可能
+    重复联系同一个招聘者。仍是 ``RuntimeError`` 子类，对外行为不变。
+    """
+
+
 async def send_response_and_go_back(response: str) -> None:
-    """在 BOSS 沟通页发送 ``response`` 然后退回到列表。"""
+    """在 BOSS 沟通页发送 ``response`` 然后退回到列表。
+
+    ``send_chat_message`` 真正把招呼语发出去之后才尝试返回列表；返回失败抛
+    ``ReturnToListError``（此时消息已送达招聘者，调用方要照常记 ``sent=True``）。
+    """
     await finding_jobs.send_chat_message(response)
     await asyncio.sleep(10)
     if not await finding_jobs.return_to_job_list():
-        raise RuntimeError("发送后未能返回岗位列表")
+        raise ReturnToListError("发送后未能返回岗位列表")
 
 
 def _int_env(name: str, default: int, minimum: int | None = None) -> int:
@@ -298,7 +311,15 @@ async def send_job_descriptions_to_chat(
                         contact_xpath = "//a[contains(@class, 'op-btn-chat')]"
                         await finding_jobs.click_by_xpath(contact_xpath, timeout=10)
                         await finding_jobs.wait_for_css("#chat-input", timeout=50)
-                        await send_response_and_go_back(response)
+                        # 消息在 send_chat_message 就送达招聘者，ReturnToListError 只表示
+                        # 之后没能回到列表。「发送成功」跟「回到列表」必须分开记：无论能否
+                        # 回列表都要记 sent=True + 计数，否则漏记真实发送、重跑会重复联系。
+                        try:
+                            await send_response_and_go_back(response)
+                            returned_to_list = True
+                        except ReturnToListError as e:
+                            log.warning("%s；招呼语已发送，照常记录后结束本轮", e)
+                            returned_to_list = False
                         sent_count += 1
                         log_attempt(
                             provider=provider_label,
@@ -316,6 +337,11 @@ async def send_job_descriptions_to_chat(
                             score=match_score,
                             letter_len=len(response),
                         )
+                        if not returned_to_list:
+                            # 已经卡在沟通页、回不到列表，继续循环只会一直拿不到 JD；
+                            # 招呼语已记录，干净收尾而不是让异常冒泡把这条发送吞掉。
+                            _emit_progress("feed_exhausted", total=job_index)
+                            break
                         if sent_count >= max_sent:
                             log.info(
                                 "已发送 %d 条，达到 BOSS_AUTO_SEND_MAX_SENT 上限，结束",
@@ -333,6 +359,16 @@ async def send_job_descriptions_to_chat(
                     job_index,
                     consecutive_misses,
                 )
+                # 到底判断放在滚动之前：哪怕下面滚动每次都"成功"，只要累计够多次拿不到
+                # JD 就收尾。否则在近乎无限的推荐 feed 上，滚动永远返回 True → 每轮都
+                # continue，这个 break 永远够不着，循环空转到发送上限或异常才停。
+                if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
+                    log.info(
+                        "连续 %d 个岗位拿不到，推测已到推荐 feed 列表底部，结束",
+                        MAX_CONSECUTIVE_MISSES,
+                    )
+                    _emit_progress("feed_exhausted", total=job_index - 1)
+                    break
                 loaded_count = await finding_jobs.get_loaded_job_count()
                 if loaded_count and visible_index > loaded_count:
                     log.info(
@@ -341,7 +377,9 @@ async def send_job_descriptions_to_chat(
                         visible_index,
                     )
                 if await finding_jobs.scroll_to_load_more_jobs():
-                    consecutive_misses = 0
+                    # 不在这里把 consecutive_misses 归零：滚动成功只说明页面还能动，不代表
+                    # 这个 index 拿得到 JD。只有真正抓到 JD（循环顶部那次归零）才算有进展，
+                    # 这样上面的到底判断才不会被"滚得动"无限推迟。
                     latest_loaded_count = await finding_jobs.get_loaded_job_count()
                     if (
                         latest_loaded_count >= 5
@@ -355,13 +393,6 @@ async def send_job_descriptions_to_chat(
                         visible_index = latest_loaded_count
                     await asyncio.sleep(1)
                     continue
-                if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
-                    log.info(
-                        "连续 %d 个岗位拿不到，推测已到推荐 feed 列表底部，结束",
-                        MAX_CONSECUTIVE_MISSES,
-                    )
-                    _emit_progress("feed_exhausted", total=job_index - 1)
-                    break
 
             await asyncio.sleep(3)
             job_index += 1
