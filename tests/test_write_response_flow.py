@@ -182,6 +182,67 @@ def test_send_response_requires_return_to_job_list(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_sent_greeting_is_logged_even_when_return_to_list_fails(monkeypatch):
+    """招呼语已发出、返回列表失败：仍必须记 sent=True 并干净收尾，不能吞掉这条发送。"""
+
+    async def scenario():
+        patch = _patch_common_browser(monkeypatch)
+        logged: list[dict] = []
+
+        async def get_jd(index: int):
+            return f"岗位{index} JD Go Redis 后端开发"
+
+        async def get_text(selector: str, timeout: float = 5):
+            return "立即沟通"
+
+        async def click(xpath: str, timeout: float = 10):
+            return True
+
+        async def wait(selector: str, timeout: float = 50):
+            return True
+
+        async def send_message(text: str):
+            return None
+
+        async def return_to_list():
+            return False
+
+        monkeypatch.setattr(
+            write_response.finding_jobs, "get_job_description_by_index", get_jd
+        )
+        monkeypatch.setattr(write_response.finding_jobs, "get_text_by_css", get_text)
+        monkeypatch.setattr(write_response.finding_jobs, "click_by_xpath", click)
+        monkeypatch.setattr(write_response.finding_jobs, "wait_for_css", wait)
+        monkeypatch.setattr(
+            write_response.finding_jobs, "send_chat_message", send_message
+        )
+        monkeypatch.setattr(
+            write_response.finding_jobs, "return_to_job_list", return_to_list
+        )
+        monkeypatch.setattr(
+            write_response, "log_attempt", lambda **kwargs: logged.append(kwargs)
+        )
+
+        await write_response.send_job_descriptions_to_chat(
+            usr_name="测试",
+            url="https://example.test",
+            browser_type="chrome",
+            label="",
+            dry_run=False,
+        )
+
+        # 消息发出去了 → 恰好一条 sent=True，然后 break 收尾（而不是异常冒泡吞掉记录）。
+        sent_records = [kw for kw in logged if kw.get("sent")]
+        assert len(sent_records) == 1
+        assert any(
+            kind == "letter_sent" and payload.get("status") == "sent"
+            for kind, payload in patch.events
+        )
+        assert not any(kind == "error" for kind, _ in patch.events)
+
+    asyncio.run(scenario())
+
+
 def test_send_limit_stops_after_configured_successful_sends(monkeypatch):
     async def scenario():
         patch = _patch_common_browser(monkeypatch)
