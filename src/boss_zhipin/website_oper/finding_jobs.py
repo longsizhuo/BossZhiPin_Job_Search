@@ -10,6 +10,7 @@
 ``scripts/probe_click_card.py`` 单 coroutine 跑同样的 evaluate 是秒返回，
 证实就是 sync facade 模式跟 nodriver 的活跃性需求不兼容。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -194,7 +195,8 @@ def _kill_profile_chrome(profile_dir: str) -> None:
     try:
         subprocess.run(
             ["pkill", "-f", os.path.abspath(profile_dir)],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
         )
     except Exception as e:  # noqa: BLE001 — 没装 pkill / 无匹配都不致命
         log.debug("pkill 残留 Chrome 跳过：%s", e)
@@ -325,7 +327,9 @@ async def _safe_evaluate(js: str, timeout: float = 10) -> dict:
             return {}
     if isinstance(raw, dict):
         return raw
-    log.warning("evaluate 返回类型 %s（不是 str/dict）：%r", type(raw).__name__, repr(raw)[:200])
+    log.warning(
+        "evaluate 返回类型 %s（不是 str/dict）：%r", type(raw).__name__, repr(raw)[:200]
+    )
     return {}
 
 
@@ -346,7 +350,9 @@ async def _js_click_at_index(css_selector: str, index_1: int) -> dict:
     return await _safe_evaluate(js)
 
 
-async def _js_wait_text(css_selector: str, min_len: int, timeout_s: float) -> str | None:
+async def _js_wait_text(
+    css_selector: str, min_len: int, timeout_s: float
+) -> str | None:
     """轮询直到 ``css_selector`` 命中且 ``text.length >= min_len``，返回 text；超时返回 None。"""
     deadline = asyncio.get_event_loop().time() + timeout_s
     while asyncio.get_event_loop().time() < deadline:
@@ -403,8 +409,7 @@ async def select_dropdown_option(label: str) -> None:
 
     log.info("  路径 1: 找推荐 tag chip ...")
     chip_xp = (
-        "//*[contains(@class,'recommend-job-btn')"
-        " and contains(@class,'has-tooltip')]"
+        "//*[contains(@class,'recommend-job-btn') and contains(@class,'has-tooltip')]"
     )
     chips = await _xpath_safe(chip_xp, timeout=3)
     log.info("    找到 %d 个 tag chip", len(chips))
@@ -422,12 +427,8 @@ async def select_dropdown_option(label: str) -> None:
     if trigger:
         log.info("    → 点开下拉")
         await trigger[0].click()
-        await _xpath_safe(
-            "//ul[contains(@class,'dropdown-expect-list')]", timeout=3
-        )
-        options = await _xpath_safe(
-            f"//li[contains(text(), '{label}')]", timeout=3
-        )
+        await _xpath_safe("//ul[contains(@class,'dropdown-expect-list')]", timeout=3)
+        options = await _xpath_safe(f"//li[contains(text(), '{label}')]", timeout=3)
         if options:
             log.info("    → 命中下拉 option %r，点击", label)
             await options[0].click()
@@ -441,7 +442,9 @@ async def select_dropdown_option(label: str) -> None:
 
 # BOSS 详情面板顶部的 UI 文字（按钮 / 区块标题），不是 JD 正文。innerText 会把它们
 # 带在最前面（"举报\n微信扫码分享\n职位描述\n…"），剥掉让喂给匹配/LLM 的更纯。
-_JD_NOISE_LINES = frozenset({"举报", "微信扫码分享", "微信分享", "分享", "职位描述", "立即沟通", "收藏"})
+_JD_NOISE_LINES = frozenset(
+    {"举报", "微信扫码分享", "微信分享", "分享", "职位描述", "立即沟通", "收藏"}
+)
 
 
 def _strip_jd_noise(text: str) -> str:
@@ -473,6 +476,146 @@ async def get_job_description_by_index(index: int) -> str | None:
     jd = _strip_jd_noise(jd)
     log.info("  JD 长度 %d 字符", len(jd))
     return jd
+
+
+async def get_loaded_job_count() -> int:
+    """返回当前 DOM 中已加载的岗位卡数量。"""
+    result = await _safe_evaluate(
+        """
+        JSON.stringify((() => {
+          return {count: document.querySelectorAll('.job-card-box').length};
+        })())
+        """,
+        timeout=5,
+    )
+    return int(result.get("count") or 0)
+
+
+async def scroll_to_load_more_jobs(timeout: float = 8.0) -> bool:
+    """滚动岗位 feed 并等待更多岗位卡出现。
+
+    BOSS 职位页有两种形态：有些滚动左侧岗位列表容器，有些滚动整个页面到底
+    触发 feed 懒加载。页面可能复用固定数量的卡片 DOM，所以左侧列表首卡变化
+    也算进展；window 滚动只有岗位卡数量增加才算成功。
+    """
+    before = await get_loaded_job_count()
+    scroll_result = await _safe_evaluate(
+        """
+        JSON.stringify((() => {
+          const firstCardText = () => {
+            const card = document.querySelector('.job-card-box');
+            return card ? (card.innerText || '').trim().slice(0, 120) : '';
+          };
+          const cards = Array.from(document.querySelectorAll('.job-card-box'));
+          const selectorCandidates = [
+            document.querySelector('.job-list-box'),
+            document.querySelector('.job-list'),
+            document.querySelector('.job-list-container'),
+            document.querySelector('[class*="job-list"]'),
+          ].filter(Boolean);
+          const ancestors = [];
+          let node = cards[0] || null;
+          while (
+            node
+            && node !== document.body
+            && node !== document.documentElement
+          ) {
+            ancestors.push(node);
+            node = node.parentElement;
+          }
+          const seen = new Set();
+          const candidates = [...selectorCandidates, ...ancestors].filter((el) => {
+            if (!cards[0] || !el.contains(cards[0]) || seen.has(el)) return false;
+            seen.add(el);
+            return true;
+          });
+          const scrollable = candidates.find((el) => (
+            el.scrollHeight > el.clientHeight + 20
+            && getComputedStyle(el).overflowY !== 'hidden'
+          ));
+          if (!scrollable) {
+            const target = document.scrollingElement
+              || document.documentElement
+              || document.body;
+            const beforeTop = window.scrollY || target.scrollTop || 0;
+            const beforeFirst = firstCardText();
+            const bottom = Math.max(
+              document.documentElement.scrollHeight,
+              document.body.scrollHeight,
+              target.scrollHeight
+            );
+            window.scrollTo(0, bottom);
+            if (target.scrollTop === beforeTop) {
+              target.scrollTop = bottom;
+            }
+            return {
+              ok: true,
+              target: 'window',
+              beforeTop,
+              afterTop: window.scrollY || target.scrollTop || 0,
+              beforeFirst,
+              afterFirst: firstCardText(),
+            };
+          }
+          const target = scrollable;
+          const beforeTop = target.scrollTop;
+          const beforeFirst = firstCardText();
+          const step = Math.max(
+            600,
+            Math.floor((target.clientHeight || window.innerHeight || 600) * 0.85)
+          );
+          target.dispatchEvent(
+            new WheelEvent(
+              'wheel',
+              {deltaY: step, bubbles: true, cancelable: true}
+            )
+          );
+          if (target.scrollTop === beforeTop && target.scrollBy) {
+            target.scrollBy(0, step);
+          }
+          if (target.scrollTop === beforeTop) {
+            target.scrollTop = beforeTop + step;
+          }
+          const afterTop = target.scrollTop;
+          const afterFirst = firstCardText();
+          return {
+            ok: true,
+            target: 'left-list',
+            targetClass: String(target.className || ''),
+            beforeTop,
+            afterTop,
+            beforeFirst,
+            afterFirst,
+          };
+        })())
+        """,
+        timeout=5,
+    )
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        await asyncio.sleep(0.5)
+        after = await get_loaded_job_count()
+        if after > before:
+            log.info(
+                "滚动加载更多岗位：%d -> %d（target=%s）",
+                before,
+                after,
+                scroll_result.get("target", ""),
+            )
+            return True
+        if scroll_result.get("target") != "left-list":
+            continue
+        if scroll_result.get("afterTop") != scroll_result.get(
+            "beforeTop"
+        ) or scroll_result.get("afterFirst") != scroll_result.get("beforeFirst"):
+            log.info(
+                "岗位列表已滚动（target=%s，count=%d，DOM 数量未变，按虚拟列表继续）",
+                scroll_result.get("target", ""),
+                before,
+            )
+            return True
+    log.info("滚动后岗位数量和可见内容均未变化：%d", before)
+    return False
 
 
 async def get_text_by_css(selector: str, timeout: float = 5) -> str | None:
@@ -517,6 +660,16 @@ async def navigate_back() -> None:
     """``history.back()`` —— 浏览器返回上一页。"""
     await _tab.evaluate("history.back()")
     await asyncio.sleep(3)
+
+
+async def return_to_job_list(timeout: float = 12.0, max_attempts: int = 2) -> bool:
+    """尽量回到岗位列表页，并确认列表卡片已恢复。"""
+    for attempt in range(1, max_attempts + 1):
+        await navigate_back()
+        if await wait_for_css(".job-card-box", timeout=timeout):
+            return True
+        log.warning("返回岗位列表第 %d 次失败，继续重试", attempt)
+    return False
 
 
 # Variables（保持向后兼容）
