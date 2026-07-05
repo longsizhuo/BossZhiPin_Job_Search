@@ -18,11 +18,13 @@
 - 连续 ``MAX_CONSECUTIVE_MISSES`` 次拿不到 JD（推测到列表底部）
 - 任何 exception 命中外层 try
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import random
 
 from boss_zhipin.audit import log_attempt, validate_letter
 from boss_zhipin.gui.events import emit as _emit_progress
@@ -37,7 +39,49 @@ async def send_response_and_go_back(response: str) -> None:
     """在 BOSS 沟通页发送 ``response`` 然后退回到列表。"""
     await finding_jobs.send_chat_message(response)
     await asyncio.sleep(10)
-    await finding_jobs.navigate_back()
+    if not await finding_jobs.return_to_job_list():
+        raise RuntimeError("发送后未能返回岗位列表")
+
+
+def _int_env(name: str, default: int, minimum: int | None = None) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning("%s=%r 不是整数，回退默认 %d", name, raw, default)
+        return default
+    if minimum is not None:
+        return max(minimum, value)
+    return value
+
+
+def _float_env(name: str, default: float, minimum: float | None = None) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        log.warning("%s=%r 不是数字，回退默认 %.1f", name, raw, default)
+        return default
+    if minimum is not None:
+        return max(minimum, value)
+    return value
+
+
+def _send_delay_range() -> tuple[float, float]:
+    min_delay = _float_env("BOSS_AUTO_SEND_DELAY_MIN", 10.0, minimum=0.0)
+    max_delay = _float_env("BOSS_AUTO_SEND_DELAY_MAX", 60.0, minimum=0.0)
+    if max_delay < min_delay:
+        log.warning(
+            "BOSS_AUTO_SEND_DELAY_MAX=%.1f 小于 MIN=%.1f，已交换两者",
+            max_delay,
+            min_delay,
+        )
+        return max_delay, min_delay
+    return min_delay, max_delay
 
 
 async def send_job_descriptions_to_chat(
@@ -76,8 +120,12 @@ async def send_job_descriptions_to_chat(
     _emit_progress("login_ok")
 
     job_index = 1
+    visible_index = 1
     iteration = 0
     consecutive_misses = 0
+    sent_count = 0
+    max_sent = _int_env("BOSS_AUTO_SEND_MAX_SENT", 50, minimum=1)
+    send_delay_min, send_delay_max = _send_delay_range()
     # 一旦 LLM 评分走了 fail-open（缺配置 / 调用挂 / 解析不出分），第二层过滤其实在
     # 全放行。只在本轮**首次**遇到时提示一次，别每个岗位刷屏。
     degraded_warned = False
@@ -88,11 +136,20 @@ async def send_job_descriptions_to_chat(
     while True:
         try:
             iteration += 1
-            log.info("=== 第 %d 轮: 处理 job_index=%d ===", iteration, job_index)
-            job_description = await finding_jobs.get_job_description_by_index(job_index)
+            log.info(
+                "=== 第 %d 轮: 处理 job_index=%d visible_index=%d ===",
+                iteration,
+                job_index,
+                visible_index,
+            )
+            job_description = await finding_jobs.get_job_description_by_index(
+                visible_index
+            )
             if job_description:
                 consecutive_misses = 0
-                _emit_progress("job_found", index=job_index, jd_preview=job_description[:80])
+                _emit_progress(
+                    "job_found", index=job_index, jd_preview=job_description[:80]
+                )
                 element = await finding_jobs.get_text_by_css(".op-btn.op-btn-chat")
                 log.info("chat 按钮文字: %r", element)
                 if element == "立即沟通":
@@ -100,8 +157,13 @@ async def send_job_descriptions_to_chat(
                     if resume_text:
                         apply, details = await asyncio.to_thread(
                             should_apply,
-                            job_description, resume_keywords, resume_text,
-                            min_keyword_match, min_llm_score, exclude_keywords, vectorstore
+                            job_description,
+                            resume_keywords,
+                            resume_text,
+                            min_keyword_match,
+                            min_llm_score,
+                            exclude_keywords,
+                            vectorstore,
                         )
                         # 评分降级（fail-open）首次出现时显式告警一次——否则用户只看到
                         # 一堆岗位"通过"，不知道第二层 LLM 过滤其实没在跑。
@@ -111,28 +173,37 @@ async def send_job_descriptions_to_chat(
                                 "⚠️ LLM 评分暂时不可用（%s），本轮所有岗位按放行处理",
                                 details.get("reason", ""),
                             )
-                            _emit_progress("scoring_degraded", detail=details.get("reason", ""))
+                            _emit_progress(
+                                "scoring_degraded", detail=details.get("reason", "")
+                            )
                         if not apply:
                             stage = details.get("stage", "unknown")
                             if stage == "blacklist":
                                 log.info(
                                     "⏭️ [跳过 #%d] 触发黑名单: %s",
-                                    job_index, details["reason"],
+                                    job_index,
+                                    details["reason"],
                                 )
                             elif stage == "keyword":
                                 log.info(
                                     "⏭️ [跳过 #%d] 关键词匹配不足: 命中 %s - %s",
-                                    job_index, details["matched_keywords"], details["reason"],
+                                    job_index,
+                                    details["matched_keywords"],
+                                    details["reason"],
                                 )
                             elif stage == "vector_search":
                                 log.info(
                                     "⏭️ [跳过 #%d] 语义不匹配: %s",
-                                    job_index, details["reason"],
+                                    job_index,
+                                    details["reason"],
                                 )
                             else:
                                 log.info(
                                     "⏭️ [跳过 #%d] LLM 评分 %s/%s: %s",
-                                    job_index, details.get("score"), details.get("threshold"), details.get("reason"),
+                                    job_index,
+                                    details.get("score"),
+                                    details.get("threshold"),
+                                    details.get("reason"),
                                 )
                             _emit_progress(
                                 "job_skipped",
@@ -144,11 +215,20 @@ async def send_job_descriptions_to_chat(
                                 matched=details.get("matched_keywords"),
                             )
                             job_index += 1
+                            visible_index += 1
                             await asyncio.sleep(3)
                             continue
-                        log.info("✅ [匹配 #%d] 关键词命中: %s", job_index, details["matched_keywords"])
+                        log.info(
+                            "✅ [匹配 #%d] 关键词命中: %s",
+                            job_index,
+                            details["matched_keywords"],
+                        )
                         if "score" in details:
-                            log.info("   LLM 评分: %s/100 - %s", details["score"], details["reason"])
+                            log.info(
+                                "   LLM 评分: %s/100 - %s",
+                                details["score"],
+                                details["reason"],
+                            )
                     # ====== 过滤结束 ======
 
                     # LLM 评分（resume_text 为空时没跑过滤 → None），带进 letter_sent 事件，
@@ -159,7 +239,9 @@ async def send_job_descriptions_to_chat(
                     # 避免阻塞事件循环 → 卡死 nodriver CDP heartbeat
                     response = await asyncio.to_thread(
                         generate_letter,
-                        usr_name, vectorstore, job_description,
+                        usr_name,
+                        vectorstore,
+                        job_description,
                     )
 
                     validation = validate_letter(response)
@@ -167,27 +249,47 @@ async def send_job_descriptions_to_chat(
                     if not validation.ok:
                         log.warning(
                             "[BLOCKED] %s — preview: %r",
-                            validation.reasons, response[:80],
+                            validation.reasons,
+                            response[:80],
                         )
                         log_attempt(
-                            provider=provider_label, model=llm_model,
-                            job_description=job_description, letter=response,
-                            validation=validation, dry_run=dry_run, sent=False,
+                            provider=provider_label,
+                            model=llm_model,
+                            job_description=job_description,
+                            letter=response,
+                            validation=validation,
+                            dry_run=dry_run,
+                            sent=False,
                         )
-                        _emit_progress("letter_sent", index=job_index, status="blocked",
-                                       score=match_score, letter_len=len(response))
+                        _emit_progress(
+                            "letter_sent",
+                            index=job_index,
+                            status="blocked",
+                            score=match_score,
+                            letter_len=len(response),
+                        )
                     elif dry_run:
                         log.info(
                             "[DRY-RUN] 招呼语 (%d 字符) 不发送。--- letter ---\n%s\n--------------",
-                            len(response), response,
+                            len(response),
+                            response,
                         )
                         log_attempt(
-                            provider=provider_label, model=llm_model,
-                            job_description=job_description, letter=response,
-                            validation=validation, dry_run=True, sent=False,
+                            provider=provider_label,
+                            model=llm_model,
+                            job_description=job_description,
+                            letter=response,
+                            validation=validation,
+                            dry_run=True,
+                            sent=False,
                         )
-                        _emit_progress("letter_sent", index=job_index, status="dry_run",
-                                       score=match_score, letter_len=len(response))
+                        _emit_progress(
+                            "letter_sent",
+                            index=job_index,
+                            status="dry_run",
+                            score=match_score,
+                            letter_len=len(response),
+                        )
                     else:
                         log.info("发送招呼语：%s", response)
                         await asyncio.sleep(1)
@@ -197,19 +299,62 @@ async def send_job_descriptions_to_chat(
                         await finding_jobs.click_by_xpath(contact_xpath, timeout=10)
                         await finding_jobs.wait_for_css("#chat-input", timeout=50)
                         await send_response_and_go_back(response)
+                        sent_count += 1
                         log_attempt(
-                            provider=provider_label, model=llm_model,
-                            job_description=job_description, letter=response,
-                            validation=validation, dry_run=False, sent=True,
+                            provider=provider_label,
+                            model=llm_model,
+                            job_description=job_description,
+                            letter=response,
+                            validation=validation,
+                            dry_run=False,
+                            sent=True,
                         )
-                        _emit_progress("letter_sent", index=job_index, status="sent",
-                                       score=match_score, letter_len=len(response))
+                        _emit_progress(
+                            "letter_sent",
+                            index=job_index,
+                            status="sent",
+                            score=match_score,
+                            letter_len=len(response),
+                        )
+                        if sent_count >= max_sent:
+                            log.info(
+                                "已发送 %d 条，达到 BOSS_AUTO_SEND_MAX_SENT 上限，结束",
+                                sent_count,
+                            )
+                            _emit_progress("feed_exhausted", total=job_index)
+                            break
+                        delay = random.uniform(send_delay_min, send_delay_max)
+                        log.info("发送后等待 %.1f 秒再继续", delay)
+                        await asyncio.sleep(delay)
             else:
                 consecutive_misses += 1
                 log.info(
                     "job_index=%d 拿不到 JD（连续第 %d 次）",
-                    job_index, consecutive_misses,
+                    job_index,
+                    consecutive_misses,
                 )
+                loaded_count = await finding_jobs.get_loaded_job_count()
+                if loaded_count and visible_index > loaded_count:
+                    log.info(
+                        "当前只加载了 %d 个岗位，尝试滚动加载第 %d 个岗位",
+                        loaded_count,
+                        visible_index,
+                    )
+                if await finding_jobs.scroll_to_load_more_jobs():
+                    consecutive_misses = 0
+                    latest_loaded_count = await finding_jobs.get_loaded_job_count()
+                    if (
+                        latest_loaded_count >= 5
+                        and visible_index > latest_loaded_count
+                    ):
+                        log.info(
+                            "岗位列表是虚拟滚动，重置可见索引：%d -> %d",
+                            visible_index,
+                            latest_loaded_count,
+                        )
+                        visible_index = latest_loaded_count
+                    await asyncio.sleep(1)
+                    continue
                 if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
                     log.info(
                         "连续 %d 个岗位拿不到，推测已到推荐 feed 列表底部，结束",
@@ -220,6 +365,7 @@ async def send_job_descriptions_to_chat(
 
             await asyncio.sleep(3)
             job_index += 1
+            visible_index += 1
 
         except Exception as e:
             log.exception("主循环抛异常: %s", e)

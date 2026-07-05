@@ -9,6 +9,7 @@
 - 我们**不**调 ``load_dotenv()`` —— 测试应当通过 ``monkeypatch.setenv`` 显式
   控制环境，依赖 .env 真实值的测试是不可复现的。
 """
+
 from __future__ import annotations
 
 import os
@@ -19,23 +20,41 @@ import os
 # ``monkeypatch.setenv`` 上去。
 _PROJECT_ENV_VARS = (
     # LLM 端点凭据（重构后统一一个 OpenAI 兼容端点）
-    "LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL",
+    "LLM_API_KEY",
+    "LLM_BASE_URL",
+    "LLM_MODEL",
     # 老 provider 凭据（已弃用，仍清掉避免本机残留污染）
-    "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
     # 用户输入兜底
-    "BOSS_USR_NAME", "BOSS_LABEL", "RESUME_PATH",
+    "BOSS_USR_NAME",
+    "BOSS_LABEL",
+    "RESUME_PATH",
     # 老 OpenAI / 模型选项（已弃用）
-    "OPENAI_BASE_URL", "CHATGPT_MODEL",
+    "OPENAI_BASE_URL",
+    "CHATGPT_MODEL",
     # retry 装饰器在 import time 读这些，本机有 export 会影响装饰器默认值
-    "BOSS_RETRY_BASE_DELAY", "BOSS_RETRY_MAX_DELAY", "BOSS_RETRY_MAX_ATTEMPTS",
+    "BOSS_RETRY_BASE_DELAY",
+    "BOSS_RETRY_MAX_DELAY",
+    "BOSS_RETRY_MAX_ATTEMPTS",
     # 落盘路径
-    "LETTER_LOG_PATH", "BOSS_LLM_TELEMETRY_PATH", "BOSS_CHROME_PROFILE",
+    "LETTER_LOG_PATH",
+    "BOSS_LLM_TELEMETRY_PATH",
+    "BOSS_CHROME_PROFILE",
     # letter 校验边界
-    "LETTER_MIN_LEN", "LETTER_MAX_LEN",
+    "LETTER_MIN_LEN",
+    "LETTER_MAX_LEN",
     # boss_zhipin.cli 用的全局 log 级
-    "LOGLEVEL", "DRY_RUN",
+    "LOGLEVEL",
+    "DRY_RUN",
+    # 自动发送节流与单次发送上限
+    "BOSS_AUTO_SEND_MAX_SENT",
+    "BOSS_AUTO_SEND_DELAY_MIN",
+    "BOSS_AUTO_SEND_DELAY_MAX",
     # standalone 模式开关 + 数据目录覆盖（paths.py 读）
-    "BOSS_TAURI_STANDALONE", "BOSS_APP_DATA_DIR",
+    "BOSS_TAURI_STANDALONE",
+    "BOSS_APP_DATA_DIR",
 )
 for _key in _PROJECT_ENV_VARS:
     os.environ.pop(_key, None)
