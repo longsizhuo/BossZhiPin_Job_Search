@@ -121,6 +121,16 @@ class TestLlmMatchScore:
         assert telemetry_spy[0]["ok"] is True
         assert telemetry_spy[0]["input_tokens"] == 100
 
+    def test_parses_plain_string_response(self, monkeypatch, fake_client, telemetry_spy):
+        monkeypatch.setattr(
+            job_matcher, "_call_chat_completion",
+            lambda client, **kwargs: "分数: 85\n理由: 技能高度匹配",
+        )
+        score, reason, degraded = llm_match_score("JD", "简历", ["Python"])
+        assert score == 85
+        assert reason == "技能高度匹配"
+        assert degraded is False
+
     def test_parses_fullwidth_colon(self, monkeypatch, fake_client, telemetry_spy):
         # 中文 LLM（尤其 DeepSeek）常用全角冒号回复；只认 ASCII ":" 会让解析
         # 静默失败 → fail-open 恒 100 → 第二层过滤被绕过。必须两种冒号都认。
