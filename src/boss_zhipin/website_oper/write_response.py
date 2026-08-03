@@ -146,6 +146,32 @@ async def send_job_descriptions_to_chat(
     # 返回 None。连续 N 次拿不到就当列表到底了停掉，否则 job_index 会无限涨。
     MAX_CONSECUTIVE_MISSES = 5
     await finding_jobs.select_dropdown_option(label)
+    # 岗位卡必须真的渲染出内容才能开跑。只判 .job-card-box 存在不够：SPA 没
+    # boot 起来时 DOM 里可能已有骨架屏空卡，选择器命中但正文全空。
+    if not await finding_jobs.wait_for_real_job_cards(timeout=30):
+        log.warning("等待 30s 仍无真实岗位卡，刷新页面重试")
+        await finding_jobs.reload_page()
+        # reload 冲掉了 select_dropdown_option 点出来的客户端筛选状态（它只点
+        # chip / 下拉，不改 URL）。不重选就会拿 BOSS 默认推荐 feed 当成用户选的
+        # tag 一路发下去，所以这里必须重来一次。
+        await finding_jobs.select_dropdown_option(label)
+        if not await finding_jobs.wait_for_real_job_cards(timeout=30):
+            # 实测过的根因：profile 的 HTTP 缓存里存了 SPA vendor 脚本的 5xx 错误
+            # 响应（CDN 抖动时缓存下来的），Chrome 一直重放这份坏缓存，Vue app 永远
+            # boot 不起来，页面死在「加载中，请稍候」。清缓存即可，登录态不受影响。
+            message = (
+                "岗位列表始终没渲染出来，页面可能卡在「加载中，请稍候」。"
+                "常见原因是 Chrome profile 缓存里存了 SPA 脚本的错误响应。"
+                f"解法：关掉脚本，删掉 {finding_jobs.CHROME_PROFILE_DIR} 里 "
+                "Default/Cache 和 Default/Code Cache 两个目录"
+                "（别删 Default/Network，登录 cookie 在里面），然后重跑。"
+            )
+            log.error(message)
+            # 必须在这里收尾。继续进主循环的话，骨架屏空卡是点得动的，每轮都会
+            # 白等 10s JD 超时，5 轮后照样上报 feed_exhausted —— 那正是本次要修掉
+            # 的误报：明明是页面没加载出来，却告诉用户「已经到底了」。
+            _emit_progress("error", stage="job_list_never_rendered", message=message)
+            return
     while True:
         try:
             iteration += 1

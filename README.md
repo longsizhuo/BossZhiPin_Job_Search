@@ -149,6 +149,22 @@ tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, validation_reasons, l
 ### 浏览器闪退 / 起不来 / `SessionNotCreatedException`
 旧版本用过 `undetected-chromedriver`，它自带的 chromedriver 跟 Chrome 版本对不齐就崩。本仓库已迁到 [nodriver](https://github.com/ultrafunkamsterdam/nodriver)，**没有 chromedriver**，直接走 CDP，所以这类版本错误结构上不会发生。如果还是闪退，多半是 profile 被锁。
 
+### 报错 `Failed to connect to browser` / `running as root`
+如果你是在 Linux/macOS 的 root 用户或容器里跑，Chrome sandbox 可能导致启动失败。
+
+可在 `.env` 加：
+```bash
+BOSS_NO_SANDBOX=1
+```
+
+然后重跑：
+```bash
+uv run main.py
+```
+
+Linux/macOS 的 root 用户下 sandbox 本来就会自动关闭（nodriver 自带这个处理），不用手动设。
+`BOSS_NO_SANDBOX=1` 是给**非 root 但 sandbox 仍然起不来**的场景兜底的，比如某些容器环境。
+
 ### Chrome 启动后 profile 显示空白 / "好像不是我的 Chrome"
 对，脚本默认用 **独立 profile**（`./chrome_profile/`），不是你日常 Chrome。这是设计——避免影响你日常浏览器的扩展和登录状态。第一次会让你扫码登录 BOSS，之后 cookie 留在这个独立 profile 里。
 
@@ -163,6 +179,21 @@ BOSS_CHROME_PROFILE="$HOME/Library/Application Support/Google/Chrome" uv run mai
 
 ### 卡在 "页面已稳定" 之后不动
 应该没了——之前是 `tab.select(timeout=0)` 在 nodriver 里阻塞。如果还遇到，把控制台输出贴 issue 里。
+
+### 页面一直是"加载中，请稍候"，一条岗位都抓不到
+BOSS 前端是 Vue SPA。CDN 抖动时 Chrome 可能把某个 vendor 脚本的错误响应（522 之类）**缓存进 profile**，之后每次启动都重放这份坏缓存，Vue app 永远 boot 不起来，DOM 里只剩骨架屏空卡。
+
+典型表现：登录态明明是好的（BOSS 的接口直接请求也能正常返回岗位数据），但页面正文始终是"加载中，请稍候"，日志里连续几轮抓不到 JD。
+
+关掉脚本，删掉这两个缓存目录（**别删 `Default/Network/`，登录 cookie 在里面**）：
+```bash
+rm -rf chrome_profile/Default/Cache "chrome_profile/Default/Code Cache"
+```
+Windows PowerShell：
+```powershell
+Remove-Item -Recurse -Force chrome_profile\Default\Cache, "chrome_profile\Default\Code Cache"
+```
+重跑即可，**不需要重新扫码**。
 
 ### 提示"❌ 找不到简历文件"
 按提示把 PDF 放到 `./resume/my_cover.pdf`，或者 `.env` 里 `RESUME_PATH=...`。

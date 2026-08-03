@@ -8,7 +8,11 @@ import asyncio
 
 from boss_zhipin.website_oper import finding_jobs
 from boss_zhipin.website_oper.finding_jobs import (
+    _apply_sandbox_setting,
+    _env_flag_true,
+    _should_disable_sandbox,
     _clear_singleton_locks,
+    _count_real_job_cards,
     _is_logged_in_from_page_state,
     get_loaded_job_count,
     return_to_job_list,
@@ -39,6 +43,86 @@ def test_no_noise_unchanged():
 def test_empty_and_none():
     assert _strip_jd_noise("") == ""
     assert _strip_jd_noise(None) == ""
+
+
+def test_env_flag_true_variants(monkeypatch):
+    monkeypatch.setenv("BOSS_NO_SANDBOX", "1")
+    assert _env_flag_true("BOSS_NO_SANDBOX") is True
+
+    monkeypatch.setenv("BOSS_NO_SANDBOX", "TrUe")
+    assert _env_flag_true("BOSS_NO_SANDBOX") is True
+
+    monkeypatch.setenv("BOSS_NO_SANDBOX", "off")
+    assert _env_flag_true("BOSS_NO_SANDBOX") is False
+
+
+def test_should_disable_sandbox_prefers_env_flag(monkeypatch):
+    monkeypatch.setenv("BOSS_NO_SANDBOX", "yes")
+    monkeypatch.delattr(finding_jobs.os, "geteuid", raising=False)
+    assert _should_disable_sandbox() is True
+
+
+def test_should_disable_sandbox_uses_root_detection(monkeypatch):
+    monkeypatch.delenv("BOSS_NO_SANDBOX", raising=False)
+    monkeypatch.setattr(finding_jobs.os, "geteuid", lambda: 0, raising=False)
+    assert _should_disable_sandbox() is True
+
+
+def test_should_disable_sandbox_default_false(monkeypatch):
+    monkeypatch.delenv("BOSS_NO_SANDBOX", raising=False)
+    monkeypatch.setattr(finding_jobs.os, "geteuid", lambda: 1000, raising=False)
+    assert _should_disable_sandbox() is False
+
+
+class _FakeConfig:
+    """替身：只关心 nodriver Config 的 sandbox 属性。"""
+
+    def __init__(self, sandbox: bool = True):
+        self.sandbox = sandbox
+
+
+def test_apply_sandbox_setting_writes_config_when_disabled(monkeypatch):
+    # 关键回归：必须落到 config.sandbox 上。nodriver 的 uc.start(sandbox=...)
+    # 只在不传 config 时才消费该参数，我们一定传 config，走 kwarg 会静默失效。
+    monkeypatch.setenv("BOSS_NO_SANDBOX", "1")
+    config = _FakeConfig(sandbox=True)
+    assert _apply_sandbox_setting(config) is False
+    assert config.sandbox is False
+
+
+def test_apply_sandbox_setting_keeps_enabled_by_default(monkeypatch):
+    monkeypatch.delenv("BOSS_NO_SANDBOX", raising=False)
+    monkeypatch.setattr(finding_jobs.os, "geteuid", lambda: 1000, raising=False)
+    config = _FakeConfig(sandbox=True)
+    assert _apply_sandbox_setting(config) is True
+    assert config.sandbox is True
+
+
+def test_apply_sandbox_setting_does_not_override_upstream_disable(monkeypatch):
+    # nodriver 在 posix + root 下自己会把 sandbox 置 False；我们不该无条件赋 True
+    # 把上游这份自动处理覆盖回去。
+    monkeypatch.delenv("BOSS_NO_SANDBOX", raising=False)
+    monkeypatch.setattr(finding_jobs.os, "geteuid", lambda: 1000, raising=False)
+    config = _FakeConfig(sandbox=False)
+    assert _apply_sandbox_setting(config) is False
+    assert config.sandbox is False
+
+
+def test_counts_only_cards_with_real_text():
+    texts = [
+        "全栈工程师\n25-35K\n某某科技",  # 真实卡
+        "后端开发\n20-30K\n另一家公司",  # 真实卡
+        "",  # 骨架屏空卡
+        "   \n \n ",  # 只有空白，仍算空卡
+    ]
+    assert _count_real_job_cards(texts) == 2
+
+
+def test_skeleton_only_page_counts_zero():
+    # SPA 没 boot 起来时的典型形态：选择器命中一堆卡，但正文全空
+    assert _count_real_job_cards(["", "  ", None]) == 0
+    assert _count_real_job_cards([]) == 0
+    assert _count_real_job_cards(None) == 0
 
 
 def test_clear_singleton_locks_removes_locks_keeps_cookies(tmp_path):

@@ -35,6 +35,52 @@ _browser: uc.Browser | None = None
 _tab: uc.Tab | None = None
 
 
+def _env_flag_true(name: str) -> bool:
+    """环境变量布尔开关解析：1/true/yes/on 视为真。"""
+    value = os.environ.get(name, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _should_disable_sandbox() -> bool:
+    """是否关闭 Chrome sandbox。
+
+    优先级：
+    1) 显式环境变量 ``BOSS_NO_SANDBOX=1`` 强制关闭；
+    2) Linux/macOS 下检测到 root 用户时自动关闭；
+    3) 其他情况保持开启。
+
+    第 2 条 nodriver 的 ``Config.__init__`` 自己也会做（posix + root 时置
+    ``sandbox=False``），这里重复一遍只为能在日志里提前告知用户。
+    """
+    if _env_flag_true("BOSS_NO_SANDBOX"):
+        return True
+
+    geteuid = getattr(os, "geteuid", None)
+    if callable(geteuid):
+        try:
+            return geteuid() == 0
+        except Exception:  # noqa: BLE001
+            return False
+    return False
+
+
+def _apply_sandbox_setting(config) -> bool:
+    """按需在 ``config`` 上关掉 Chrome sandbox，返回最终是否启用 sandbox。
+
+    **必须改 ``config.sandbox``，不能走 ``uc.start(sandbox=...)``**：nodriver 的
+    ``util.start`` 只在 ``if not config:`` 分支里把 ``sandbox`` 传进 ``Config``，
+    我们这里一定自己建 Config 再传进去，那个 kwarg 会被静默丢弃（不报错、不生效）。
+    ``--no-sandbox`` 最终由 ``Config.__call__`` 依据 ``self.sandbox`` 生成。
+
+    只在需要关闭时赋值：nodriver 在 posix + root 下已自行置 False，无条件赋 True
+    会把上游这份自动处理覆盖掉。
+    """
+    if _should_disable_sandbox():
+        config.sandbox = False
+        return False
+    return bool(getattr(config, "sandbox", True))
+
+
 def get_tab() -> uc.Tab | None:
     """同步读当前控制的 Tab 引用。仅用作内省。"""
     return _tab
@@ -244,6 +290,10 @@ async def open_browser_with_options(url: str, browser: str) -> None:
     config = Config()
     config.user_data_dir = CHROME_PROFILE_DIR
     config.headless = False
+    if _apply_sandbox_setting(config):
+        log.info("Chrome sandbox: enabled")
+    else:
+        log.warning("Chrome sandbox: disabled（root 或 BOSS_NO_SANDBOX=1，按需使用）")
     _browser = await _start_browser_with_retry(config)
 
     # 持久化 profile 启动时 Chrome 会把上次的 tab 都恢复出来；脚本控制的 tab
@@ -654,6 +704,65 @@ async def send_chat_message(text: str) -> None:
     await asyncio.sleep(3)
     await chat.send_keys("\n")
     await asyncio.sleep(1)
+
+
+async def reload_page() -> None:
+    """刷新当前页面，然后给它一点时间开始重新加载。
+
+    走 ``_safe_evaluate`` 而不是裸 ``_tab.evaluate``：reload 会换掉 renderer
+    进程，pending 的 ``Runtime.evaluate`` 响应可能永远回不来，而 nodriver 的
+    ``Connection.send`` 是没有 timeout 的裸 Future —— 裸调会把整个流程挂死。
+
+    这里只等固定 2 秒（reload 前后 URL 不变，等 URL 稳定没有意义）；真正
+    「加载好了没」由调用方的 ``wait_for_real_job_cards`` 负责。
+    """
+    await _safe_evaluate("JSON.stringify((() => {location.reload(); return {};})())")
+    await asyncio.sleep(2)
+
+
+# 骨架屏占位卡的 innerText 基本是空的（只有几个装饰用的空 span）；真实岗位卡
+# 至少带职位名 + 公司名，远超这个长度。
+_MIN_REAL_CARD_TEXT_LEN = 10
+
+
+def _count_real_job_cards(card_texts: list[str] | None) -> int:
+    """统计有实际内容的岗位卡数量，排除骨架屏空卡。
+
+    纯函数，便于单测（见 tests/test_finding_jobs_text.py）。
+    """
+    return sum(
+        1
+        for text in (card_texts or [])
+        if len((text or "").strip()) >= _MIN_REAL_CARD_TEXT_LEN
+    )
+
+
+async def wait_for_real_job_cards(timeout: float = 30) -> bool:
+    """轮询直到出现**有文字内容**的岗位卡；超时返回 False。
+
+    为什么不用 ``wait_for_css('.job-card-box')``：SPA 没 boot 起来时页面停在
+    「加载中，请稍候」，DOM 里可能已经有骨架屏占位卡，选择器命中但正文全空，
+    主循环随后每一轮都抓不到 JD，最后误报「已到推荐 feed 列表底部」。
+    """
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        result = await _safe_evaluate(
+            """
+            JSON.stringify((() => {
+              const cards = document.querySelectorAll('.job-card-box');
+              return {
+                texts: Array.from(cards).map(c => (c.innerText || '').trim()),
+              };
+            })())
+            """,
+            timeout=5,
+        )
+        real = _count_real_job_cards(result.get("texts"))
+        if real:
+            log.info("岗位卡已渲染（有内容的 %d 张）", real)
+            return True
+        await asyncio.sleep(1)
+    return False
 
 
 async def navigate_back() -> None:
