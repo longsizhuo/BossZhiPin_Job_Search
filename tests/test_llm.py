@@ -1,10 +1,12 @@
-"""models.llm 的纯函数单测——目前盯 ``current_provider_label``。
+"""models.llm 的纯函数单测——``current_provider_label`` + ``_completion_content``。
 
-这个标签决定 ``logs/llm_calls.jsonl`` 的 ``by_provider`` 分组；它的 docstring 自述
+前者决定 ``logs/llm_calls.jsonl`` 的 ``by_provider`` 分组；它的 docstring 自述
 "曾经就这么错过一次"（成功路径写死过 deepseek），所以单独盯住 base_url→标签的映射。
 成本估算按 model 名算、跟这个标签无关，所以这里只验分组语义。
 """
 from __future__ import annotations
+
+import types
 
 import pytest
 
@@ -50,3 +52,30 @@ class TestProviderLabel:
 
     def test_unknown_is_custom(self):
         assert llm._provider_label("https://my-proxy.example.com/v1") == "custom"
+
+
+def _completion(content, usage=None):
+    """搭一个最小的 ChatCompletion 替身（只要 _completion_content 认得的字段）。"""
+    message = types.SimpleNamespace(content=content)
+    choice = types.SimpleNamespace(message=message)
+    return types.SimpleNamespace(choices=[choice], usage=usage)
+
+
+class TestCompletionContent:
+    def test_normal_response(self):
+        assert llm._completion_content(_completion("你好")) == "你好"
+
+    def test_plain_string_passthrough(self):
+        assert llm._completion_content("裸文本招呼语") == "裸文本招呼语"
+
+    def test_none_content_becomes_empty_string(self):
+        # content=None 是合法返回（如触发内容过滤），别让 None 流到 len() / 校验
+        assert llm._completion_content(_completion(None)) == ""
+
+    def test_choices_none_returns_empty(self):
+        # 200 包错误信封：{"error": {...}}，没有 choices → 原来抛 TypeError
+        assert llm._completion_content(types.SimpleNamespace(choices=None)) == ""
+
+    def test_choices_empty_list_returns_empty(self):
+        # 另一种形态：choices 是空列表 → 原来抛 IndexError
+        assert llm._completion_content(types.SimpleNamespace(choices=[])) == ""
