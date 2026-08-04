@@ -233,16 +233,22 @@ def _ensure_localhost_bypasses_proxy() -> None:
     用户开了 Clash 等代理后 http_proxy 环境变量会拦截所有 HTTP 请求，
     包括 nodriver 连 Chrome CDP 的 http://127.0.0.1:<port>/json/version，
     代理返回 502 → nodriver 报 "Failed to connect to browser"。
+
+    设 env 就够：``ProxyHandler.proxy_open`` 每次请求都现调 ``proxy_bypass``
+    重读环境变量，不受 urllib 缓存 opener 的影响。
     """
-    no_proxy = os.environ.get("no_proxy", os.environ.get("NO_PROXY", ""))
-    needed = {"127.0.0.1", "localhost"}
-    existing = {s.strip() for s in no_proxy.split(",") if s.strip()}
-    missing = needed - existing
-    if missing:
-        new_val = ",".join(sorted(existing | needed))
-        os.environ["no_proxy"] = new_val
-        os.environ["NO_PROXY"] = new_val
-        log.debug("no_proxy 补上 %s → %s", missing, new_val)
+    # 必须用 or 串联：POSIX 上这俩是独立变量，no_proxy 被设成空串时 get 的
+    # default 分支不执行，读不到 NO_PROXY 就会把用户原有的 bypass 列表覆盖掉。
+    no_proxy = os.environ.get("no_proxy") or os.environ.get("NO_PROXY") or ""
+    existing = [s.strip() for s in no_proxy.split(",") if s.strip()]
+    lowered = {s.lower() for s in existing}  # urllib 比对前也 .lower()
+    missing = [h for h in ("127.0.0.1", "localhost") if h not in lowered]
+    if not missing:
+        return
+    new_val = ",".join(existing + missing)  # 追加，保留原有条目和顺序
+    os.environ["no_proxy"] = new_val
+    os.environ["NO_PROXY"] = new_val
+    log.debug("no_proxy 补上 %s → %s", missing, new_val)
 
 
 def _kill_profile_chrome(profile_dir: str) -> None:
