@@ -149,6 +149,16 @@ tail -f logs/letters.jsonl | jq '{ts, sent, validation_ok, validation_reasons, l
 ### 浏览器闪退 / 起不来 / `SessionNotCreatedException`
 旧版本用过 `undetected-chromedriver`，它自带的 chromedriver 跟 Chrome 版本对不齐就崩。本仓库已迁到 [nodriver](https://github.com/ultrafunkamsterdam/nodriver)，**没有 chromedriver**，直接走 CDP，所以这类版本错误结构上不会发生。如果还是闪退，多半是 profile 被锁。
 
+### 容器 / 非 root 环境里 Chrome sandbox 起不来
+少数环境（某些 Docker 镜像、CI runner）里 Chrome 的 sandbox 拉不起来，Chrome 进程直接退出。可在 `.env` 加：
+```bash
+BOSS_NO_SANDBOX=1
+```
+
+Linux/macOS 的 **root 用户不用设** —— nodriver 自己就会在 posix + root 下关掉 sandbox。这个开关是给**非 root 但 sandbox 仍然失败**的场景兜底的。
+
+> 如果你看到的报错是 `Failed to connect to browser`，那多半**不是** sandbox 的问题。nodriver 的报错文案里那句 "One of the causes could be when you are running as root" 是硬编码在异常字符串里的兜底猜测，不是诊断结论 —— 设 `BOSS_NO_SANDBOX=1` 大概率解决不了它。
+
 ### Chrome 启动后 profile 显示空白 / "好像不是我的 Chrome"
 对，脚本默认用 **独立 profile**（`./chrome_profile/`），不是你日常 Chrome。这是设计——避免影响你日常浏览器的扩展和登录状态。第一次会让你扫码登录 BOSS，之后 cookie 留在这个独立 profile 里。
 
