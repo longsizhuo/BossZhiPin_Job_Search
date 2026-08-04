@@ -17,7 +17,12 @@ from dotenv import load_dotenv
 from pypdf import PdfReader
 
 from boss_zhipin.audit.telemetry import record_llm_call
-from boss_zhipin.models.llm import _build_client, _call_chat_completion, current_provider_label
+from boss_zhipin.models.llm import (
+    _build_client,
+    _call_chat_completion,
+    _completion_content,
+    current_provider_label,
+)
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -81,7 +86,7 @@ def _llm_extract_keywords(resume_text: str) -> list[str]:
             temperature=0.1,
             max_tokens=300,
         )
-        content = response.choices[0].message.content or ""
+        content = _completion_content(response)
         # 简单清理可能带上的 Markdown 标记
         content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         keywords = json.loads(content)
@@ -205,7 +210,7 @@ def llm_match_score(
         log.warning("LLM 评分调用失败: %s", e)
         return 100, f"评分失败（{e}）", True
 
-    content = response.choices[0].message.content or ""
+    content = _completion_content(response)
     usage = getattr(response, "usage", None)
     record_llm_call(
         provider=prov, model=llm_model,
