@@ -181,6 +181,24 @@ def _clear_singleton_locks(profile_dir: str) -> None:
             log.debug("清 Singleton 锁 %s 跳过：%s", name, e)
 
 
+def _ensure_localhost_bypasses_proxy() -> None:
+    """确保 127.0.0.1/localhost 不走代理。
+
+    用户开了 Clash 等代理后 http_proxy 环境变量会拦截所有 HTTP 请求，
+    包括 nodriver 连 Chrome CDP 的 http://127.0.0.1:<port>/json/version，
+    代理返回 502 → nodriver 报 "Failed to connect to browser"。
+    """
+    no_proxy = os.environ.get("no_proxy", os.environ.get("NO_PROXY", ""))
+    needed = {"127.0.0.1", "localhost"}
+    existing = {s.strip() for s in no_proxy.split(",") if s.strip()}
+    missing = needed - existing
+    if missing:
+        new_val = ",".join(sorted(existing | needed))
+        os.environ["no_proxy"] = new_val
+        os.environ["NO_PROXY"] = new_val
+        log.debug("no_proxy 补上 %s → %s", missing, new_val)
+
+
 def _kill_profile_chrome(profile_dir: str) -> None:
     """杀掉占着本 profile 的残留 Chrome（上次 run 崩了没收掉的孤儿）。
 
@@ -238,6 +256,9 @@ async def open_browser_with_options(url: str, browser: str) -> None:
             f"browser={browser!r} 不再支持；nodriver 只走 Chrome。"
         )
     os.makedirs(CHROME_PROFILE_DIR, exist_ok=True)
+    # nodriver 用 urllib 连 Chrome CDP（http://127.0.0.1:<port>/json/version）。
+    # 如果用户开了代理（如 Clash），http_proxy 会拦截 localhost 请求导致 502。
+    _ensure_localhost_bypasses_proxy()
     # 起之前先收掉上次没退干净、占着本 profile 的孤儿 Chrome + 清残留锁，
     # 否则会复现用户实测的 "Failed to connect to browser"（profile 被旧实例锁住）。
     _reap_profile_chrome(CHROME_PROFILE_DIR)
