@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import os
 
 from boss_zhipin.website_oper import finding_jobs
 from boss_zhipin.website_oper.finding_jobs import (
@@ -13,6 +14,7 @@ from boss_zhipin.website_oper.finding_jobs import (
     _should_disable_sandbox,
     _clear_singleton_locks,
     _count_real_job_cards,
+    _ensure_localhost_bypasses_proxy,
     _is_logged_in_from_page_state,
     get_loaded_job_count,
     return_to_job_list,
@@ -123,6 +125,59 @@ def test_skeleton_only_page_counts_zero():
     assert _count_real_job_cards(["", "  ", None]) == 0
     assert _count_real_job_cards([]) == 0
     assert _count_real_job_cards(None) == 0
+
+
+def _read_no_proxy() -> str:
+    return os.environ.get("no_proxy") or os.environ.get("NO_PROXY") or ""
+
+
+def _set_no_proxy(monkeypatch, value: str | None) -> None:
+    # 必须先清两个变体再设：Windows 的 os.environ 大小写不敏感，先 setenv
+    # 再 delenv 另一个变体会把刚设的值一起删掉。
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    if value is not None:
+        monkeypatch.setenv("no_proxy", value)
+
+
+def test_ensure_localhost_bypasses_proxy_adds_both_hosts(monkeypatch):
+    _set_no_proxy(monkeypatch, None)
+    _ensure_localhost_bypasses_proxy()
+    entries = _read_no_proxy().split(",")
+    assert "127.0.0.1" in entries
+    assert "localhost" in entries
+
+
+def test_ensure_localhost_bypasses_proxy_keeps_existing_entries(monkeypatch):
+    _set_no_proxy(monkeypatch, "corp.example.com,10.0.0.1")
+    _ensure_localhost_bypasses_proxy()
+    entries = _read_no_proxy().split(",")
+    # 用户原有的 bypass 条目一条都不能丢
+    assert "corp.example.com" in entries
+    assert "10.0.0.1" in entries
+    assert "127.0.0.1" in entries
+
+
+def test_ensure_localhost_bypasses_proxy_falls_back_to_uppercase(monkeypatch):
+    # 回归：no_proxy 为空串时要回退读 NO_PROXY。只有 POSIX 分得开这两个变量，
+    # 所以这条在 ubuntu CI 上才真正生效。
+    _set_no_proxy(monkeypatch, "")
+    monkeypatch.setenv("NO_PROXY", "corp.example.com")
+    _ensure_localhost_bypasses_proxy()
+    assert "corp.example.com" in _read_no_proxy().split(",")
+
+
+def test_ensure_localhost_bypasses_proxy_is_noop_when_present(monkeypatch):
+    _set_no_proxy(monkeypatch, "127.0.0.1,localhost")
+    _ensure_localhost_bypasses_proxy()
+    assert _read_no_proxy() == "127.0.0.1,localhost"
+
+
+def test_ensure_localhost_bypasses_proxy_dedupes_case_insensitively(monkeypatch):
+    # LOCALHOST 已经命中（urllib 比对前 .lower()），不该每次启动再追加一条
+    _set_no_proxy(monkeypatch, "LOCALHOST,127.0.0.1")
+    _ensure_localhost_bypasses_proxy()
+    assert _read_no_proxy().lower().split(",").count("localhost") == 1
 
 
 def test_clear_singleton_locks_removes_locks_keeps_cookies(tmp_path):
