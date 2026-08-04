@@ -35,6 +35,52 @@ _browser: uc.Browser | None = None
 _tab: uc.Tab | None = None
 
 
+def _env_flag_true(name: str) -> bool:
+    """环境变量布尔开关解析：1/true/yes/on 视为真。"""
+    value = os.environ.get(name, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _should_disable_sandbox() -> bool:
+    """是否关闭 Chrome sandbox。
+
+    优先级：
+    1) 显式环境变量 ``BOSS_NO_SANDBOX=1`` 强制关闭；
+    2) Linux/macOS 下检测到 root 用户时自动关闭；
+    3) 其他情况保持开启。
+
+    第 2 条 nodriver 的 ``Config.__init__`` 自己也会做（posix + root 时置
+    ``sandbox=False``），这里重复一遍只为能在日志里提前告知用户。
+    """
+    if _env_flag_true("BOSS_NO_SANDBOX"):
+        return True
+
+    geteuid = getattr(os, "geteuid", None)
+    if callable(geteuid):
+        try:
+            return geteuid() == 0
+        except Exception:  # noqa: BLE001
+            return False
+    return False
+
+
+def _apply_sandbox_setting(config) -> bool:
+    """按需在 ``config`` 上关掉 Chrome sandbox，返回最终是否启用 sandbox。
+
+    **必须改 ``config.sandbox``，不能走 ``uc.start(sandbox=...)``**：nodriver 的
+    ``util.start`` 只在 ``if not config:`` 分支里把 ``sandbox`` 传进 ``Config``，
+    我们这里一定自己建 Config 再传进去，那个 kwarg 会被静默丢弃（不报错、不生效）。
+    ``--no-sandbox`` 最终由 ``Config.__call__`` 依据 ``self.sandbox`` 生成。
+
+    只在需要关闭时赋值：nodriver 在 posix + root 下已自行置 False，无条件赋 True
+    会把上游这份自动处理覆盖掉。
+    """
+    if _should_disable_sandbox():
+        config.sandbox = False
+        return False
+    return bool(getattr(config, "sandbox", True))
+
+
 def get_tab() -> uc.Tab | None:
     """同步读当前控制的 Tab 引用。仅用作内省。"""
     return _tab
@@ -244,6 +290,12 @@ async def open_browser_with_options(url: str, browser: str) -> None:
     config = Config()
     config.user_data_dir = CHROME_PROFILE_DIR
     config.headless = False
+    # 注意：这里只影响 Chrome 进程能不能起来，跟 nodriver 连不上 CDP 时抛的
+    # "Failed to connect to browser" 是两条不同的链路，别拿它当那个报错的解药。
+    if _apply_sandbox_setting(config):
+        log.info("Chrome sandbox: enabled")
+    else:
+        log.warning("Chrome sandbox: disabled（root 或 BOSS_NO_SANDBOX=1，按需使用）")
     _browser = await _start_browser_with_retry(config)
 
     # 持久化 profile 启动时 Chrome 会把上次的 tab 都恢复出来；脚本控制的 tab
