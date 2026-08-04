@@ -656,6 +656,65 @@ async def send_chat_message(text: str) -> None:
     await asyncio.sleep(1)
 
 
+async def reload_page() -> None:
+    """刷新当前页面，然后给它一点时间开始重新加载。
+
+    走 ``_safe_evaluate`` 而不是裸 ``_tab.evaluate``：reload 会换掉 renderer
+    进程，pending 的 ``Runtime.evaluate`` 响应可能永远回不来，而 nodriver 的
+    ``Connection.send`` 是没有 timeout 的裸 Future —— 裸调会把整个流程挂死。
+
+    这里只等固定 2 秒（reload 前后 URL 不变，等 URL 稳定没有意义）；真正
+    「加载好了没」由调用方的 ``wait_for_real_job_cards`` 负责。
+    """
+    await _safe_evaluate("JSON.stringify((() => {location.reload(); return {};})())")
+    await asyncio.sleep(2)
+
+
+# 骨架屏占位卡的 innerText 基本是空的（只有几个装饰用的空 span）；真实岗位卡
+# 至少带职位名 + 公司名，远超这个长度。
+_MIN_REAL_CARD_TEXT_LEN = 10
+
+
+def _count_real_job_cards(card_texts: list[str] | None) -> int:
+    """统计有实际内容的岗位卡数量，排除骨架屏空卡。
+
+    纯函数，便于单测（见 tests/test_finding_jobs_text.py）。
+    """
+    return sum(
+        1
+        for text in (card_texts or [])
+        if len((text or "").strip()) >= _MIN_REAL_CARD_TEXT_LEN
+    )
+
+
+async def wait_for_real_job_cards(timeout: float = 30) -> bool:
+    """轮询直到出现**有文字内容**的岗位卡；超时返回 False。
+
+    为什么不用 ``wait_for_css('.job-card-box')``：SPA 没 boot 起来时页面停在
+    「加载中，请稍候」，DOM 里可能已经有骨架屏占位卡，选择器命中但正文全空，
+    主循环随后每一轮都抓不到 JD，最后误报「已到推荐 feed 列表底部」。
+    """
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        result = await _safe_evaluate(
+            """
+            JSON.stringify((() => {
+              const cards = document.querySelectorAll('.job-card-box');
+              return {
+                texts: Array.from(cards).map(c => (c.innerText || '').trim()),
+              };
+            })())
+            """,
+            timeout=5,
+        )
+        real = _count_real_job_cards(result.get("texts"))
+        if real:
+            log.info("岗位卡已渲染（有内容的 %d 张）", real)
+            return True
+        await asyncio.sleep(1)
+    return False
+
+
 async def navigate_back() -> None:
     """``history.back()`` —— 浏览器返回上一页。"""
     await _tab.evaluate("history.back()")
