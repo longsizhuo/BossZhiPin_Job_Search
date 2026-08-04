@@ -130,6 +130,9 @@ class TestLlmMatchScore:
         assert score == 85
         assert reason == "技能高度匹配"
         assert degraded is False
+        # str 没有 usage 属性 → token 记 0（原来这个 fixture 注入了却没断言）
+        assert telemetry_spy[0]["ok"] is True
+        assert telemetry_spy[0]["input_tokens"] == 0
 
     def test_parses_fullwidth_colon(self, monkeypatch, fake_client, telemetry_spy):
         # 中文 LLM（尤其 DeepSeek）常用全角冒号回复；只认 ASCII ":" 会让解析

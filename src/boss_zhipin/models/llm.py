@@ -89,10 +89,20 @@ def _call_chat_completion(client: OpenAI, **kwargs):
 
 
 def _completion_content(response) -> str:
-    """Return message content from OpenAI-compatible responses."""
+    """取 message content。两种中转端点的返回都归一化成空串，不抛异常。
+
+    非 JSON 的 content-type 会让 SDK 原样返回 ``str``；HTTP 200 包错误信封
+    （``{"error": ...}``）则是对象有了但 ``choices`` 是 None / 空。
+    三个调用点都有兜底（``validate_letter`` 的 too_short / fail-open /
+    ``json.loads`` 的 except），所以返回空串比抛异常安全。
+    """
     if isinstance(response, str):
         return response
-    return response.choices[0].message.content or ""
+    choices = getattr(response, "choices", None)
+    if not choices:
+        log.warning("LLM 响应缺少 choices（疑似中转返回错误信封）: %r", response)
+        return ""
+    return choices[0].message.content or ""
 
 
 def generate_letter(
