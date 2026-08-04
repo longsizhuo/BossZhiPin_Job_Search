@@ -88,6 +88,13 @@ def _call_chat_completion(client: OpenAI, **kwargs):
     return client.chat.completions.create(**kwargs)
 
 
+def _completion_content(response) -> str:
+    """Return message content from OpenAI-compatible responses."""
+    if isinstance(response, str):
+        return response
+    return response.choices[0].message.content or ""
+
+
 def generate_letter(
     usr_name: str,
     vectorstore: VectorStore,
@@ -140,7 +147,7 @@ def generate_letter(
         )
         raise
 
-    letter = response.choices[0].message.content or ""
+    letter = _completion_content(response)
     usage = getattr(response, "usage", None)
     record_llm_call(
         provider=provider_label,

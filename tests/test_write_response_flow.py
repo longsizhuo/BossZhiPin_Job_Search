@@ -30,9 +30,17 @@ def _patch_common_browser(monkeypatch) -> BrowserPatch:
     async def fake_sleep(delay: float):
         sleeps.append(delay)
 
+    async def cards_ready(timeout: float = 30):
+        return True
+
     monkeypatch.setattr(write_response.finding_jobs, "open_browser_with_options", noop)
     monkeypatch.setattr(write_response.finding_jobs, "log_in", noop)
     monkeypatch.setattr(write_response.finding_jobs, "select_dropdown_option", noop)
+    # 主循环开跑前会等岗位卡真正渲染出来；这里直接放行，各用例只关心之后的控制流
+    monkeypatch.setattr(
+        write_response.finding_jobs, "wait_for_real_job_cards", cards_ready
+    )
+    monkeypatch.setattr(write_response.finding_jobs, "reload_page", noop)
     monkeypatch.setattr(write_response.asyncio, "sleep", fake_sleep)
     monkeypatch.setattr(
         write_response,
@@ -102,6 +110,110 @@ def test_missing_job_scrolls_and_retries_same_index(monkeypatch):
         )
 
     asyncio.run(scenario())
+
+
+def test_never_rendered_job_list_reports_error_not_feed_exhausted(monkeypatch):
+    """岗位卡始终没渲染出来时，必须报 error 收尾，不能误报「已到 feed 底部」。
+
+    回归的是这个真实故障：profile 缓存里存了 SPA 脚本的错误响应，页面死在
+    「加载中，请稍候」，骨架屏空卡却点得动 —— 老逻辑会空转 5 轮然后上报
+    feed_exhausted，让用户以为正常跑完了。
+    """
+
+    async def scenario():
+        patch = _patch_common_browser(monkeypatch)
+        reloads: list[bool] = []
+        requested: list[int] = []
+
+        async def never_ready(timeout: float = 30):
+            return False
+
+        async def reload():
+            reloads.append(True)
+
+        async def get_jd(index: int):
+            requested.append(index)
+            return None
+
+        monkeypatch.setattr(
+            write_response.finding_jobs, "wait_for_real_job_cards", never_ready
+        )
+        monkeypatch.setattr(write_response.finding_jobs, "reload_page", reload)
+        monkeypatch.setattr(
+            write_response.finding_jobs, "get_job_description_by_index", get_jd
+        )
+
+        await write_response.send_job_descriptions_to_chat(
+            usr_name="测试",
+            url="https://example.test",
+            browser_type="chrome",
+            label="",
+            dry_run=True,
+        )
+
+        kinds = [kind for kind, _ in patch.events]
+        assert "error" in kinds
+        assert "feed_exhausted" not in kinds
+        # 直接收尾，一轮岗位都不该去抓
+        assert requested == []
+        # 失败前刷新过一次
+        assert reloads == [True]
+
+    asyncio.run(scenario())
+
+
+def test_reload_reapplies_label_filter(monkeypatch):
+    """刷新会冲掉客户端筛选状态，必须重新选一次 label。
+
+    否则用户选的 tag 悄悄退化成 BOSS 默认推荐 feed，招呼语会发给一批他没打算投的岗位。
+    """
+
+    async def scenario():
+        _patch_common_browser(monkeypatch)
+        selected: list[str] = []
+        ready_calls: list[int] = []
+
+        async def select_label(label: str):
+            selected.append(label)
+
+        async def ready_on_second_try(timeout: float = 30):
+            ready_calls.append(1)
+            return len(ready_calls) > 1
+
+        async def get_jd(index: int):
+            return None
+
+        monkeypatch.setattr(
+            write_response.finding_jobs, "select_dropdown_option", select_label
+        )
+        monkeypatch.setattr(
+            write_response.finding_jobs, "wait_for_real_job_cards", ready_on_second_try
+        )
+        monkeypatch.setattr(
+            write_response.finding_jobs, "get_job_description_by_index", get_jd
+        )
+        monkeypatch.setattr(
+            write_response.finding_jobs,
+            "scroll_to_load_more_jobs",
+            lambda: _false(),
+        )
+
+        await write_response.send_job_descriptions_to_chat(
+            usr_name="测试",
+            url="https://example.test",
+            browser_type="chrome",
+            label="后端开发",
+            dry_run=True,
+        )
+
+        # 首次一次 + reload 后补选一次
+        assert selected == ["后端开发", "后端开发"]
+
+    asyncio.run(scenario())
+
+
+async def _false() -> bool:
+    return False
 
 
 def test_virtual_job_list_uses_visible_card_index_after_scroll(monkeypatch):

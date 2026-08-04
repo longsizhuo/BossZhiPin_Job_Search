@@ -12,6 +12,7 @@ from boss_zhipin.website_oper.finding_jobs import (
     _env_flag_true,
     _should_disable_sandbox,
     _clear_singleton_locks,
+    _count_real_job_cards,
     _is_logged_in_from_page_state,
     get_loaded_job_count,
     return_to_job_list,
@@ -105,6 +106,23 @@ def test_apply_sandbox_setting_does_not_override_upstream_disable(monkeypatch):
     config = _FakeConfig(sandbox=False)
     assert _apply_sandbox_setting(config) is False
     assert config.sandbox is False
+
+
+def test_counts_only_cards_with_real_text():
+    texts = [
+        "全栈工程师\n25-35K\n某某科技",  # 真实卡
+        "后端开发\n20-30K\n另一家公司",  # 真实卡
+        "",  # 骨架屏空卡
+        "   \n \n ",  # 只有空白，仍算空卡
+    ]
+    assert _count_real_job_cards(texts) == 2
+
+
+def test_skeleton_only_page_counts_zero():
+    # SPA 没 boot 起来时的典型形态：选择器命中一堆卡，但正文全空
+    assert _count_real_job_cards(["", "  ", None]) == 0
+    assert _count_real_job_cards([]) == 0
+    assert _count_real_job_cards(None) == 0
 
 
 def test_clear_singleton_locks_removes_locks_keeps_cookies(tmp_path):
