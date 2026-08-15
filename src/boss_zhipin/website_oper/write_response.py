@@ -51,6 +51,7 @@ async def send_response_and_go_back(response: str) -> None:
     ``ReturnToListError``（此时消息已送达招聘者，调用方要照常记 ``sent=True``）。
     """
     await finding_jobs.send_chat_message(response)
+    await finding_jobs.click_send_resume(timeout=5)
     await asyncio.sleep(10)
     if not await finding_jobs.return_to_job_list():
         raise ReturnToListError("发送后未能返回岗位列表")
@@ -336,6 +337,9 @@ async def send_job_descriptions_to_chat(
                         # 改成 class 匹配，跟 get_text_by_css(".op-btn.op-btn-chat") 配套。
                         contact_xpath = "//a[contains(@class, 'op-btn-chat')]"
                         await finding_jobs.click_by_xpath(contact_xpath, timeout=10)
+                        # BOSS 改版后点"立即沟通"会弹一个确认框（自动发默认招呼语），
+                        # 需要点"继续沟通"才能进聊天页。
+                        await finding_jobs.dismiss_greeting_dialog(timeout=5)
                         await finding_jobs.wait_for_css("#chat-input", timeout=50)
                         # 消息在 send_chat_message 就送达招聘者，ReturnToListError 只表示
                         # 之后没能回到列表。「发送成功」跟「回到列表」必须分开记：无论能否

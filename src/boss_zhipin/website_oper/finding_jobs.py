@@ -715,6 +715,26 @@ async def click_by_xpath(xpath: str, timeout: float = 10) -> bool:
     return True
 
 
+async def dismiss_greeting_dialog(timeout: float = 5) -> bool:
+    """关掉"立即沟通"后弹出的默认招呼语确认框。
+
+    BOSS 2026-08 改版后，点"立即沟通"会自动发一条默认招呼语，然后弹框提示
+    "已向BOSS发送消息"，需要点"继续沟通"才进入聊天页。
+    如果弹框没出现（旧版 BOSS 或已经跳过），静默返回 False。
+    """
+    try:
+        btn = await _tab.find("继续沟通", best_match=True, timeout=timeout)
+    except Exception:
+        btn = None
+    if btn:
+        await btn.click()
+        log.info("已关闭默认招呼语弹框（点击'继续沟通'）")
+        await asyncio.sleep(1)
+        return True
+    log.debug("未检测到招呼语弹框，跳过")
+    return False
+
+
 async def wait_for_css(selector: str, timeout: float = 50) -> bool:
     """等 CSS 选择器命中。成功返回 True，超时返回 False。"""
     try:
@@ -725,14 +745,42 @@ async def wait_for_css(selector: str, timeout: float = 50) -> bool:
 
 
 async def send_chat_message(text: str) -> None:
-    """把 text 打进 ``#chat-input`` 然后回车发送。"""
+    """把 text 打进 ``#chat-input`` 然后点发送按钮。"""
     chat = await _tab.select("#chat-input", timeout=10)
     if not chat:
         raise RuntimeError("chat input (#chat-input) 未找到")
     await chat.send_keys(text)
     await asyncio.sleep(3)
-    await chat.send_keys("\n")
+    # BOSS 改版后回车不再触发发送，需要点击发送按钮
+    try:
+        send_btn = await _tab.find("发送", best_match=True, timeout=5)
+    except Exception:
+        send_btn = None
+    if send_btn:
+        await send_btn.click()
+        log.info("已点击'发送'按钮")
+    else:
+        log.warning("未找到'发送'按钮，尝试回车发送")
+        await chat.send_keys("\n")
     await asyncio.sleep(1)
+
+
+async def click_send_resume(timeout: float = 5) -> bool:
+    """在聊天页点击"发简历"按钮。
+
+    发完招呼语后聊天页可能出现"发简历"按钮，点击即可附带简历。
+    按钮不存在时静默返回 False（不影响主流程）。
+    """
+    try:
+        btn = await _tab.find("发简历", best_match=True, timeout=timeout)
+    except Exception:
+        btn = None
+    if btn:
+        await btn.click()
+        log.info("已点击'发简历'")
+        await asyncio.sleep(2)
+        return True
+    log.debug("未找到'发简历'按钮，跳过")
 
 
 async def reload_page() -> None:
