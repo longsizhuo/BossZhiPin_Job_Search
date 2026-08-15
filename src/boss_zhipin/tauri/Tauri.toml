@@ -9,7 +9,7 @@
 # 所以这条提醒只放这里。）
 "$schema" = "https://schema.tauri.app/config/2"
 productName = "BOSS Zhipin Helper"
-version = "0.4.1"
+version = "0.6.0"
 identifier = "com.longsizhuo.boss-zhipin"
 
 [build]

@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "boss-zhipin"
-version = "0.3.1"
+version = "0.6.0"
 dependencies = [
  "pyo3",
  "pytauri",
