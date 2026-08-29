@@ -2,12 +2,16 @@
 
 覆盖：
 - 关键词提取/匹配：词边界（短英文词不被子串误报）、中文子串、特殊符号关键词
+- ``extract_keywords_from_text``：持久化缓存——成功才落盘、失败空列表不落盘
+  （防毒化）、已毒化的空缓存自愈、二次调用命中缓存不再调 LLM
 - ``llm_match_score``：正常解析、分数钳位、三种 fail-open（缺 key / 调用失败 /
   回复解析不出分数）、telemetry 落盘
 - ``should_apply``：关键词层拒绝、LLM 层通过/拒绝
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import types
 
 import pytest
@@ -102,6 +106,64 @@ class TestKeywordMatch:
         )
         assert not passed
         assert matched == []
+
+
+# ---------- extract_keywords_from_text 持久化缓存 ----------
+
+class TestExtractKeywordsCache:
+    """缓存只存成功结果——失败落盘会把粗筛层永久毒化。"""
+
+    def test_failed_extraction_not_cached(self, monkeypatch, tmp_path):
+        # LLM 提取失败返回空列表 → 不能写缓存，否则之后每次启动都命中
+        # 空列表，关键词粗筛被静默永久禁用。
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(job_matcher, "_llm_extract_keywords", lambda text: [])
+        assert extract_keywords_from_text("简历全文") == []
+        assert list(tmp_path.rglob("keywords.json")) == []
+
+    def test_successful_extraction_cached(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            job_matcher, "_llm_extract_keywords", lambda text: ["Python", "Docker"]
+        )
+        assert extract_keywords_from_text("简历全文") == ["Python", "Docker"]
+        cache_files = list((tmp_path / "vectorstores").rglob("keywords.json"))
+        assert len(cache_files) == 1
+        assert json.loads(cache_files[0].read_text(encoding="utf-8")) == [
+            "Python", "Docker"
+        ]
+
+    def test_second_call_hits_cache_without_llm(self, monkeypatch, tmp_path):
+        # 缓存命中的意义：不再消耗一次 LLM 调用
+        monkeypatch.chdir(tmp_path)
+        calls: list[str] = []
+
+        def fake_extract(text: str) -> list[str]:
+            calls.append(text)
+            return ["Python"]
+
+        monkeypatch.setattr(job_matcher, "_llm_extract_keywords", fake_extract)
+        extract_keywords_from_text("简历全文")
+        extract_keywords_from_text("简历全文")
+        assert len(calls) == 1
+
+    def test_poisoned_empty_cache_self_heals(self, monkeypatch, tmp_path):
+        # 旧版本 bug 落盘的空缓存：读缓存时当作未命中，重新提取并覆盖写回，
+        # 已被毒化的存量用户无需手动删文件即自愈。
+        monkeypatch.chdir(tmp_path)
+        cache_dir = (
+            tmp_path / "vectorstores"
+            / hashlib.md5("简历全文".encode("utf-8")).hexdigest()
+        )
+        cache_dir.mkdir(parents=True)
+        cache_file = cache_dir / "keywords.json"
+        cache_file.write_text("[]", encoding="utf-8")
+
+        monkeypatch.setattr(
+            job_matcher, "_llm_extract_keywords", lambda text: ["Python"]
+        )
+        assert extract_keywords_from_text("简历全文") == ["Python"]
+        assert json.loads(cache_file.read_text(encoding="utf-8")) == ["Python"]
 
 
 # ---------- llm_match_score ----------
