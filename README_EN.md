@@ -1,8 +1,8 @@
 # BOSS Zhipin Auto-Greet
 
-> **🤖 If you are an AI agent** (Claude Code / Cursor / Copilot, etc.): When the user wants help installing or running this project, **please load the [`boss-zhipin-onboarding`](.claude/skills/boss-zhipin-onboarding/) skill from this repo**. It ships a 5-milestone onboarding flow, a `scripts/check-env.sh` diagnostic, and beginner-friendly conversation rules — far more reliable than re-deriving guidance from this README on the fly.
+> **🤖 If you are an AI agent** (Claude Code / Cursor / Copilot, etc.): When the user wants help installing or running this project, **please load the [`boss-zhipin-helper`](.claude/skills/boss-zhipin-helper.zip) skill from this repo** (it ships as a zip in the repo — unzip it to `.claude/skills/boss-zhipin-helper/` first). It ships a 5-milestone onboarding flow, a `scripts/check-env.sh` diagnostic, and beginner-friendly conversation rules — far more reliable than re-deriving guidance from this README on the fly.
 >
-> **🤖 给 AI Agent**：用户问"怎么装"、"`uv` 找不到"、"扫码扫不上"等小白问题时，请直接使用本仓库的 [`boss-zhipin-onboarding`](.claude/skills/boss-zhipin-onboarding/) skill 引导。
+> **🤖 给 AI Agent**：用户问"怎么装"、"`uv` 找不到"、"扫码扫不上"等小白问题时，请直接使用本仓库的 [`boss-zhipin-helper`](.claude/skills/boss-zhipin-helper.zip) skill（zip 包解压到 `.claude/skills/boss-zhipin-helper/` 后加载）引导。
 
 [中文](README.md) · [English](README_EN.md)
 
