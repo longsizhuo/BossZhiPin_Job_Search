@@ -373,6 +373,11 @@ export default function RunPage() {
                 {t("run.dryRunDesc")}
               </span>
             </label>
+            {/* BOSS 账号自带的「自动打招呼」提示。只能静态提示：那个弹框只在设置
+                开着时出现，dry run 压根不点「立即沟通」，运行期检测不到。 */}
+            <p className="mt-1 text-xs font-mono text-[var(--muted-fg)] italic leading-relaxed">
+              {t("run.autoGreetingWarn")}
+            </p>
           </Field>
         </div>
       </section>

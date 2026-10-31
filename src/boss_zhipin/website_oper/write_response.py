@@ -337,8 +337,9 @@ async def send_job_descriptions_to_chat(
                         # 改成 class 匹配，跟 get_text_by_css(".op-btn.op-btn-chat") 配套。
                         contact_xpath = "//a[contains(@class, 'op-btn-chat')]"
                         await finding_jobs.click_by_xpath(contact_xpath, timeout=10)
-                        # BOSS 改版后点"立即沟通"会弹一个确认框（自动发默认招呼语），
-                        # 需要点"继续沟通"才能进聊天页。
+                        # 账号开着 BOSS 的"自动打招呼"时，点"立即沟通"会弹一个确认框
+                        # （BOSS 已经替用户发了它自带的招呼语），需要点"继续沟通"才能进
+                        # 聊天页。关掉那个设置的账号不会弹，函数超时静默跳过。
                         await finding_jobs.dismiss_greeting_dialog(timeout=5)
                         await finding_jobs.wait_for_css("#chat-input", timeout=50)
                         # 消息在 send_chat_message 就送达招聘者，ReturnToListError 只表示

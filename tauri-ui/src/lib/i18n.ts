@@ -79,6 +79,8 @@ const zh: Dict = {
   "run.defaultEndpoint": "OpenAI 默认端点",
   "run.fieldDryRun": "Dry Run（只生成不发送）",
   "run.dryRunDesc": "只生成不发送（推荐先 dry run 一次）",
+  "run.autoGreetingWarn":
+    "真跑前建议先去 BOSS 账号设置里关掉「自动打招呼」：开着的话，脚本点「立即沟通」时 BOSS 会先替你发一条它自带的招呼语，本工具生成的招呼语只能是第二条 —— 而 BOSS 那条不经过本工具的内容校验。",
   "run.fieldResume": "简历 PDF",
   "run.resumeHint": "必填 · 拖入或选择",
   "run.uploading": "上传中…",
@@ -215,6 +217,8 @@ const en: Dict = {
   "run.defaultEndpoint": "OpenAI default endpoint",
   "run.fieldDryRun": "Dry Run (generate only)",
   "run.dryRunDesc": "Generate only, don't send (recommended for the first run)",
+  "run.autoGreetingWarn":
+    "Before a real run, turn off BOSS's built-in auto-greeting in your account settings. While it's on, BOSS sends its own greeting the moment the script clicks 立即沟通, so the letter this tool generates can only ever be the second message — and BOSS's one never goes through this tool's content checks.",
   "run.fieldResume": "Resume PDF",
   "run.resumeHint": "Required · drag or pick",
   "run.uploading": "Uploading…",
