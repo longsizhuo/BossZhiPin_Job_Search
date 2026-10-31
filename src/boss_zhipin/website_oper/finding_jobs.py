@@ -718,9 +718,13 @@ async def click_by_xpath(xpath: str, timeout: float = 10) -> bool:
 async def dismiss_greeting_dialog(timeout: float = 5) -> bool:
     """关掉"立即沟通"后弹出的默认招呼语确认框。
 
-    BOSS 2026-08 改版后，点"立即沟通"会自动发一条默认招呼语，然后弹框提示
-    "已向BOSS发送消息"，需要点"继续沟通"才进入聊天页。
-    如果弹框没出现（旧版 BOSS 或已经跳过），静默返回 False。
+    **触发条件是账号设置，不是 BOSS 改版**：BOSS 账号里的"自动打招呼"默认开着，
+    开着时点"立即沟通"BOSS 会先替用户发一条它自带的招呼语，然后弹框提示
+    "已向BOSS发送消息"，需要点"继续沟通"才进聊天页。用户手动关掉那个设置后
+    整个弹框都不会出现——所以这里超时静默返回 False 是正常路径，不是异常。
+
+    （最初按"BOSS 2026-08 改版"提的 PR #39，后经 maintainer 核实其实是提交者
+    账号开着自动打招呼；行为本身属实，归因改正。）
     """
     try:
         btn = await _tab.find("继续沟通", best_match=True, timeout=timeout)

@@ -56,6 +56,16 @@ DRY_RUN=1 uv run main.py
 uv run main.py
 ```
 
+### Before a real run: turn off BOSS's auto-greeting
+
+BOSS ships with **auto-greeting enabled by default** in your account settings. While it's
+on, BOSS sends its own canned greeting the moment the script clicks 立即沟通, so the letter
+this tool generates can only ever be the **second** message — and BOSS's one never goes
+through this tool's content checks (length / CJK / blacklist all bypassed).
+
+Turn it off in BOSS's web or mobile settings before you drop `DRY_RUN`. A dry run cannot
+surface this for you: it never clicks 立即沟通 in the first place.
+
 ### First run: scan to log in
 
 The script starts Chrome with a dedicated profile at `./chrome_profile/` (**your daily Chrome is untouched**). The first run gets redirected to BOSS's login page, clicks "WeChat scan login" for you, and waits up to 5 minutes for you to scan the QR. Once you're logged in the cookie lives in `chrome_profile/` and **every subsequent run skips the login step**.
