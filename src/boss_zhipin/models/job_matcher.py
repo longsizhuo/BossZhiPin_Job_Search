@@ -110,14 +110,22 @@ def extract_keywords_from_text(resume_text: str) -> list[str]:
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
                 cached_keywords = json.load(f)
-                if isinstance(cached_keywords, list):
+                # 空列表 = 之前一次失败提取落盘的毒缓存：当作未命中重新提取，
+                # 顺手把已被毒化的旧缓存自愈掉。
+                if isinstance(cached_keywords, list) and cached_keywords:
                     log.info("✅ 已从本地缓存读取专属简历关键词（%d个）", len(cached_keywords))
                     return cached_keywords
         except Exception as e:
             log.warning("读取缓存关键词失败: %s", e)
 
     keywords = _llm_extract_keywords(resume_text)
-    
+
+    # 提取失败（缺 key / 限流 / 回复格式坏）返回空列表——**不落盘**。
+    # 原实现把空列表也写进缓存，之后每次启动都命中空列表，关键词粗筛层
+    # 被永久静默禁用，用户毫无感知。
+    if not keywords:
+        return keywords
+
     # 存入缓存
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
