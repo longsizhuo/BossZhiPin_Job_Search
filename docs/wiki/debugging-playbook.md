@@ -168,6 +168,6 @@ await try_eval("阶段 4: 真实动作", tab, CLICK_JS, timeout=10)        # 跟
 
 - [`scripts/dump_boss_page.py`](../../scripts/dump_boss_page.py) — 抓页面 HTML + 截图 + 自动探测候选选择器
 - [`scripts/probe_click_card.py`](../../scripts/probe_click_card.py) — 分阶段测 evaluate / click / 读 JD
-- [`.claude/skills/boss-zhipin-onboarding/scripts/check-env.sh`](../../.claude/skills/boss-zhipin-onboarding/scripts/check-env.sh) — 一次性诊断 5 个里程碑状态
+- [`.claude/skills/boss-zhipin-helper.zip`](../../.claude/skills/boss-zhipin-helper.zip) 里的 `scripts/check-env.sh` — 一次性诊断 5 个里程碑状态
 
 下次遇到类似 bug：**先来这页翻一眼，再动手**。

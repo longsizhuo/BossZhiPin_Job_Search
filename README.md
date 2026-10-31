@@ -1,6 +1,6 @@
 # BOSS 直聘自动打招呼脚本
 
-> **🤖 If You are AI agents **：当用户问"怎么装这个项目"、"`uv` 命令找不到"、"扫码扫不上"、"`DEEPSEEK_API_KEY` 怎么填"之类的小白问题时，**请直接加载并使用本仓库的 [`boss-zhipin-onboarding`](.claude/skills/boss-zhipin-onboarding/) skill**。它自带 5 步里程碑流程、`scripts/check-env.sh` 一键诊断脚本，以及面向零基础用户的沟通规范，比你从这份 README 重新组织一遍引导更可靠。
+> **🤖 If You are AI agents **：当用户问"怎么装这个项目"、"`uv` 命令找不到"、"扫码扫不上"、"`DEEPSEEK_API_KEY` 怎么填"之类的小白问题时，**请直接加载并使用本仓库的 [`boss-zhipin-helper`](.claude/skills/boss-zhipin-helper.zip) skill**（仓库里是 zip 包，解压到 `.claude/skills/boss-zhipin-helper/` 后加载）。它自带 5 步里程碑流程、`scripts/check-env.sh` 一键诊断脚本，以及面向零基础用户的沟通规范，比你从这份 README 重新组织一遍引导更可靠。
 [中文](README.md) · [English](README_EN.md)
 
 读 BOSS 上的岗位描述，用 LLM 给 HR 生成一封礼貌的打招呼语，按规则审核后再发送。走**任意 OpenAI 兼容端点**（DeepSeek / OpenAI / Claude / 通义千问·百炼 / 智谱GLM / 豆包 / Kimi / 本地 Ollama …），配好 `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` 三个变量就能起跑。
@@ -27,7 +27,10 @@
 - Python >= 3.11
 - macOS / Linux / Windows（脚本目前只支持 Chrome / Chromium，nodriver 不支持 Edge/Safari）
 - 装好 Chrome（不是 Chromium beta，普通 stable 即可）
-- 装好 [uv](https://docs.astral.sh/uv/)：`curl -LsSf https://astral.sh/uv/install.sh | sh`
+- 装好 [uv](https://docs.astral.sh/uv/)：
+  - macOS / Linux：`curl -LsSf https://astral.sh/uv/install.sh | sh`
+  - Windows：`powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- 只有跑桌面 App（GUI）才需要 **Node.js >= 18 + pnpm**（前端要单独构建一次，见下文）
 
 ### 跑起来
 
@@ -40,6 +43,7 @@ uv sync
 # 2. 配 API key
 cp .env.example .env
 # 编辑 .env，至少填一个 LLM provider 的 key（详见下方 .env 字段说明）
+# Windows PowerShell：Copy-Item .env.example .env
 
 # 3. 准备简历
 mkdir -p resume
@@ -48,9 +52,11 @@ mkdir -p resume
 
 # 4. dry-run 试一下（只生成、不发送）
 DRY_RUN=1 uv run main.py
+# Windows PowerShell：$env:DRY_RUN=1; uv run main.py
 
 # 5. 确认 logs/letters.jsonl 里的招呼语质量 OK，再去掉 DRY_RUN 真跑
 uv run main.py
+# Windows PowerShell：Remove-Item Env:DRY_RUN; uv run main.py
 ```
 
 ### 首次运行：扫码登录
@@ -66,15 +72,28 @@ uv run main.py
 ```bash
 # 开发模式：Python 主进程 + pytauri-wheel（uv sync 默认就装 tauri 组）
 uv sync
+
+# ⚠️ 先构建前端：src/boss_zhipin/tauri/frontend/ 在 .gitignore 里，是 vite 产物，
+# clone 下来并不存在。跳过这步窗口能开，但只会显示 "asset not found: index.html"。
+pnpm --dir tauri-ui install
+pnpm --dir tauri-ui build
+
 uv run python -m boss_zhipin.tauri
 
 # 不想装桌面 App 那一坨（纯 CLI 用户）：
 # uv sync --no-group tauri
 
-# Standalone .app（macOS）：打一个双击就能跑的 bundle
+# 改完 tauri-ui/ 下的前端代码要重跑一次 pnpm --dir tauri-ui build，
+# `uv run python -m boss_zhipin.tauri` 不会自动构建（那是 npm dev 模式才有的行为）。
+
+# Standalone .app（macOS）：打一个双击就能跑的 bundle（脚本内部会先 build 前端）
 ./scripts/build_standalone.sh
 # 产物在 src-tauri/target/bundle-release/bundle/macos/
 ```
+
+> GitHub release 里的 Windows/macOS 安装包**可能落后于 master**（例如适配 BOSS
+> 2026-08 改版「立即沟通后弹框 + 发送按钮变更」的修复目前只在源码里，尚未发版）。
+> 装完发现点「立即沟通」后卡住、或找不到「发送」按钮时，请改用上面的源码方式跑。
 
 Standalone 模式的用户数据（`.env` / `chrome_profile/` / `logs/` /
 `vectorstores/`）落在 `~/Library/Application Support/com.longsizhuo.boss-zhipin/`，
@@ -188,6 +207,16 @@ Windows PowerShell：
 Remove-Item -Recurse -Force chrome_profile\Default\Cache, "chrome_profile\Default\Code Cache"
 ```
 重跑即可，**不需要重新扫码**。
+
+### 桌面 App 窗口能打开，但白屏 / 只有一行 `asset not found: index.html`
+前端是 vite 构建产物，输出到 `src/boss_zhipin/tauri/frontend/`，而这个目录在 `.gitignore` 里——clone 下来没有它，`python -m boss_zhipin.tauri` 不会自动构建。补上这一句：
+
+```bash
+pnpm --dir tauri-ui install
+pnpm --dir tauri-ui build
+```
+
+之后再 `uv run python -m boss_zhipin.tauri`。改了 `tauri-ui/` 里的前端代码也要重新 build 一次。
 
 ### 提示"❌ 找不到简历文件"
 按提示把 PDF 放到 `./resume/my_cover.pdf`，或者 `.env` 里 `RESUME_PATH=...`。
